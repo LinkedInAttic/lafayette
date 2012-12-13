@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+{% block body %}
+<h4>Quick help</h4>
+for pattern: use %25 to code the % used in SQL queries, eg: %25ADP%25<br/>
+emailType is ('normal','bounce','auto-replied')<br/>
+<pre>
+/email/id/'emailId'
+/url/
+/url/pattern/
+/url/pattern/'pattern'
+/url/pattern/'pattern'/limit/
+/url/pattern/'pattern'/limit/'limit'
+/url/subject/pattern/'pattern'
+/email/
+/email/type/
+/email/type/'emailType'
+/email/type/'emailType'/limit/')
+/email/type/<emailType>/limit/'limit'
+/email/urlId/'urlId'
+/email/subject/
+/email/subject/'subject'
+/email/subject/'subject'/limit/
+/email/subject/'subject'/limit/'limit'
+/email/url/pattern/
+/email/url/pattern/'pattern'
+/email/url/pattern/'pattern'/limit/'
+/email/url/pattern/'pattern'/limit/'limit'
+</pre>
+{% endblock %}

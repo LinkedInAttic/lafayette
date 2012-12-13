@@ -1,0 +1,13 @@
+{% extends "layout.html" %}
+{% block body %}
+  <table class="table table-hover">
+    <thead><tr><th>urlId</th><th>IP</th><th>ASN</th><th>url</th></tr></thead>
+    <tbody>
+  {% for entry in entries %}
+    <tr><td><a href="{{ url_for('displayMailListFromUrl',urlId=entry.urlId) }}">{{ entry.urlId }}</a></td><td>{{ entry.Ip }}</td><td>{{ entry.urlAsn }}</td><td>{{ entry.url|safe }}</td></tr>
+  {% else %}
+    <tr><td><em>Unbelievable.  No entries here so far</em></td></tr>
+  {% endfor %}
+  </tbody>
+  </table>
+{% endblock %}

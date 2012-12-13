@@ -1,0 +1,14 @@
+Red Dawn
+========
+
+Red Dawn is a system to store various email abuse reports sent in ARF. It is organized in such a way that fraudulent emails can be easily selected, sorted and reported back to the resource owners. For instance it can be used to receive DMARC failure reports.
+
+How to install
+==============
+
+This requires python, flask and mysql server.
+
+1) create the database using the forensic.sql file
+2) run the web server forensic.py
+3) install in a cron job the script forensic-mysql.py
+4) send failure reports to the appropriate mailbox that forensic-mysql.py will read

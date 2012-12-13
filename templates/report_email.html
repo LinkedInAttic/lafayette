@@ -1,0 +1,17 @@
+{% extends "layout.html" %}
+{% block body %}
+  <form action="{{ url_for('reportEmail') }}" method="post" name="reportemail">
+  <table class="table table-hover">
+    <thead><tr><th></th><th></th><th>emailId</th><th width="150px">arrivalDate</th><th>reportedDomain</th><th>sourceIp</th><th>sourceDomain</th><th>emailAbuse</th><th>delivery</th><th>subject</th></tr></thead>
+    <tbody>
+  {% for entry in entries %}
+    <tr><td><input type="checkbox" name="emailid{{ loop.index }}" value="{{ entry.emailId }}" {% if entry.reported == 0 %}checked="checked">{% endif %}</td><td>{% if entry.reported == 1 %}R{% endif %}</td><td><a href="javascript:void(0)" onClick="loadEmail({{ entry.emailId }});">{{ entry.emailId }}</a></td><td>{{ entry.arrivalDate }}</td><td>{{ entry.reportedDomain }}</td><td>{{ entry.sourceIp }}</td><td>{{ entry.sourceDomain }}</td><td>{{ entry.emailAbuse }}</td><td>{{ entry.deliveryResult|safe }}</td><td>{{ entry.subject|safe }}</td></tr>
+  {% else %}
+    <tr><td><em>Unbelievable.  No entries here so far</em></td></tr>
+  {% endfor %}
+  </tbody>
+  </table>
+  R: Email previously reported<br/>
+  <p><input type="submit" name="submit" value="Send Reports"></p>
+  </form>
+{% endblock %}

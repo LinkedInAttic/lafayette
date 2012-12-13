@@ -1,0 +1,54 @@
+<!doctype html>
+<html>
+<head>
+	<title>Red Dawn:{{ title }}</title>
+	<link rel=stylesheet type=text/css href="{{ url_for('static', filename='style.css') }}">
+	<link href="{{ url_for('static', filename='bootstrap/css/bootstrap.min.css') }}" rel="stylesheet" media="screen">
+</head>
+<body>
+<script src="http://code.jquery.com/jquery-latest.js"></script>
+<script src="{{ url_for('static', filename='bootstrap/js/bootstrap.min.js') }}"></script>
+
+<script type=text/javascript>
+  $SCRIPT_ROOT = {{ request.script_root|tojson|safe }};
+</script>
+
+<!-- Modal -->
+<div id="emailModal" class="modal hide fade" style="left:20%; top:20%; width:80%; margin: -20px 0 0 -20px;" tabindex="-1" role="dialog" aria-labelledby="emailModalLabel" aria-hidden="true">
+  <div class="modal-header">
+    <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+    <h3 id="emailModalLabel">Email</h3>
+  </div>
+  <div>
+  <pre class="modal-body">
+   No email
+  </pre>
+  </div>
+  <div class="modal-footer">
+    <button class="btn" data-dismiss="modal" aria-hidden="true">Close</button>
+  </div>
+</div>
+
+<script>
+
+  function loadEmailText(str) {
+    $('.modal-body').text(str).html();
+    $('#emailModal').modal('show');
+  };
+
+
+  function loadEmail(id)
+  {
+    $.get($SCRIPT_ROOT+'/email/id/'+id, loadEmailText);
+  }
+</script>
+
+<div class=page>
+  <h1>{{ title }}</h1>
+  {% for message in get_flashed_messages() %}
+    <div class=flash>{{ message }}</div>
+  {% endfor %}
+  {% block body %}{% endblock %}
+</div>
+</body>
+</html>
