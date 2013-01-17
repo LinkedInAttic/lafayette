@@ -36,6 +36,7 @@ found=config.readfp(open(filename))
 dbHost=config.get('db','dbHost')
 dbUser=config.get('db','dbUser')
 dbName=config.get('db','dbName')
+dbPassword=config.get('db','dbPassword')
 
 imapHost=config.get('mailbox','imapHost')
 impaUser=config.get('mailbox','impaUser')
@@ -238,7 +239,7 @@ topsendingip={}
 topurlip={}
 topurl={}
 
-db=MySQLdb.connect(host=dbHost,user=dbUser,db=dbName)
+db=MySQLdb.connect(host=dbHost,user=dbUser,passwd=dbPassword,db=dbName)
 db.autocommit(True)
 
 imap = imaplib.IMAP4_SSL(imapHost)

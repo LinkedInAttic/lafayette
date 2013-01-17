@@ -46,6 +46,7 @@ app.secret_key = config.get('web','secret_key')
 dbHost=config.get('db','dbHost')
 dbUser=config.get('db','dbUser')
 dbName=config.get('db','dbName')
+dbPassword=config.get('db','dbPassword')
 
 # end of local config
 
@@ -104,7 +105,7 @@ def sendArf(item):
 
 @app.before_request
 def before_request():
-    g.db=MySQLdb.connect(host=dbHost,user=dbUser,db=dbName)
+    g.db=MySQLdb.connect(host=dbHost,user=dbUser,passwd=dbPassword,db=dbName)
     g.db.autocommit(True)
     is_authorized()
 

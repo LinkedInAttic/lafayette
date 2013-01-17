@@ -18,7 +18,7 @@
 from flask import Flask, request
 
 def is_authorized():
-    authorizedUser=False
+    authorizedUser=True
     if not request.environ['SERVER_SOFTWARE'][:8]=="Werkzeug":
         if not authorizedUser:
             abort(401)
