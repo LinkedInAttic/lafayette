@@ -20,7 +20,10 @@ from flask import Flask, request, session, g, redirect, url_for, \
      abort, render_template, flash, Response, request
 import MySQLdb
 import dns.resolver
+import os
 from pprint import pprint
+
+from ConfigParser import SafeConfigParser
 
 import smtplib
 from email.message import Message
@@ -28,21 +31,21 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 
+from forensic_auth import is_authorized
+
 app = Flask(__name__)
 
 # Local config
 #
-app.secret_key = 'secret'
+config = SafeConfigParser()
+filename = os.path.join(app.root_path, 'forensic.cfg')
+found=config.readfp(open(filename))
 
-dbHost="localhost"
-dbUser="root"
-dbName="arf"
+app.secret_key = config.get('web','secret_key')
 
-def is_authorized():
-    authorizedUser=True
-    if not request.environ['SERVER_SOFTWARE'][:8]=="Werkzeug":
-        if not authorizedUser:
-            abort(401)
+dbHost=config.get('db','dbHost')
+dbUser=config.get('db','dbUser')
+dbName=config.get('db','dbName')
 
 # end of local config
 
@@ -68,7 +71,7 @@ def sendArf(item):
     msg["Subject"] = "Abuse report for: "+str(item['subject'])
 
     text = "This is an email in the abuse report format for an email message received from \r\n"
-    text = text+"IP "+str(item['sourceIp'])+" "+str(item['sourceDomain'])+" on "+str(item['arrivalDate'])+".\r\n"
+    text = text+"IP "+str(item['sourceIp'])+" "+str(item['sourceDomain'])+" on "+str(item['arrivalDate'])+" UTC.\r\n"
     text = text+"This report likely indicates a compromised machine and may contain URLs to malware, treat with caution!\r\n"
     text = text+"For more information about this format please see http://tools.ietf.org/html/rfc6591.\r\n";
 
@@ -276,5 +279,5 @@ def reportEmail():
     return render_template('report_email.html', entries=entries, title=title)
 
 if __name__ == '__main__':
-    title = "Red Dawn"
+    title = "Lafayette"
     app.run(host='0.0.0.0',debug=True)

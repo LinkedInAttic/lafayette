@@ -8,7 +8,7 @@ function checkAll(el) {
   <form action="{{ url_for('reportEmail') }}" method="post" name="reportemail">
   <p><input type="submit" value="Report Emails"></p>
   <table class="table table-hover">
-    <thead><tr><th><input type="checkbox" onClick="checkAll(this)"></th><th>emailId</th><th></th><th width="150px">arrivalDate</th><th>reportedDomain</th><th>sourceDomain</th><th>delivery</th><th>subject</th></tr></thead>
+    <thead><tr><th width="10px" ><input type="checkbox" onClick="checkAll(this)"></th><th width="80px">emailId</th><th width="10px"></th><th width="150px">arrivalDate</th><th width="150px">reportedDomain</th><th width="250px">sourceDomain</th><th width="60px">delivery</th><th>subject</th></tr></thead>
     <tbody>
   {% for entry in entries %}
     <tr><td><input type="checkbox" name="emailid{{ loop.index }}" value="{{ entry.emailId }}"></td><td><a href="javascript:void(0)" onClick="loadEmail({{ entry.emailId }});">{{ entry.emailId }}</a></td><td>{% if entry.reported == 1 %}R{% endif %}</td><td>{{ entry.arrivalDate }}</td><td>{{ entry.reportedDomain }}</td><td>{{ entry.sourceDomain }}</td><td>{{ entry.deliveryResult|safe }}</td><td>{{ entry.subject|safe }}</td></tr>

@@ -1,5 +1,9 @@
 CHANGELOG
 =========
 
+2013/01/16 - Franck Martin
+  - move config in a separate file
+  - fix css to ensure data does not bleed outside the tables
+
 2012/12/12 - Franck Martin
   - First release

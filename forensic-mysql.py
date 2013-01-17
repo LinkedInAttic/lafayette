@@ -23,16 +23,25 @@ import calendar
 from datetime import date, datetime, timedelta
 from dateutil.parser import parse
 import MySQLdb
+import os
+
+from ConfigParser import SafeConfigParser
 
 # local config
 #
-dbHost="localhost"
-dbUser="root"
-dbName="arf"
+config = SafeConfigParser()
+filename = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'forensic.cfg')
+found=config.readfp(open(filename))
 
-imapHost="localhost"
-impaUser="failures"
-imapPassword="password"
+dbHost=config.get('db','dbHost')
+dbUser=config.get('db','dbUser')
+dbName=config.get('db','dbName')
+
+imapHost=config.get('mailbox','imapHost')
+impaUser=config.get('mailbox','impaUser')
+imapPassword=config.get('mailbox','imapPassword')
+
+networks = {}
 
 # end of local config
 
