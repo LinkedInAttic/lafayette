@@ -42,11 +42,15 @@ filename = os.path.join(app.root_path, 'forensic.cfg')
 found=config.readfp(open(filename))
 
 app.secret_key = config.get('web','secret_key')
+reportSender = config.get('web','reportSender')
+mailSmtp = config.get('web','mailSmtp')
 
 dbHost=config.get('db','dbHost')
 dbUser=config.get('db','dbUser')
 dbName=config.get('db','dbName')
 dbPassword=config.get('db','dbPassword')
+
+
 
 # end of local config
 
@@ -63,12 +67,15 @@ def getEmailAbuseFromIp(ip):
     return res
 
 def sendArf(item):
+    global reportSender
+    global mailSmtp
+
     msg = MIMEBase('multipart','report')
     msg.set_param('report-type','feedback-report',requote=False)
 
     #msg["To"] = "fmartin@tst.linkedin.com,franck@tst.linkedin.com";
     msg["To"] = str(item['emailAbuse'])
-    msg["From"] = "postmaster@linkedin.com";
+    msg["From"] = reportSender
     msg["Subject"] = "Abuse report for: "+str(item['subject'])
 
     text = "This is an email in the abuse report format for an email message received from \r\n"
@@ -97,7 +104,7 @@ def sendArf(item):
     
     msg.attach(msgrfc822)
 
-    s = smtplib.SMTP('mail.corp.linkedin.com')
+    s = smtplib.SMTP(mailSmtp)
     toList = msg["To"].split(",")
     s.sendmail(msg["From"], toList, msg.as_string())
     s.quit()

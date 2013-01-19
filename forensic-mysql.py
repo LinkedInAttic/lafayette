@@ -70,9 +70,24 @@ def getIp4ToAsn(ip):
 		reportanswers = dns.resolver.query(query, 'TXT')
 		res = reportanswers[0].to_text()
 		asn = long(res.split("|")[0][1:])
-    	except:
-      		pass
+	except:
+		pass
 	return asn
+
+def getIp4ToAsnCc(ip):
+	asn = 0
+	cc = "ZZ"
+	try:
+		(ip1,ip2,ip3,ip4) = ip.split(".")
+		query = "%s.%s.%s.%s.origin.asn.cymru.com" % (ip4,ip3,ip2,ip1)
+		reportanswers = dns.resolver.query(query, 'TXT')
+		res = reportanswers[0].to_text()
+		asn = long(res.split("|")[0][1:])
+		cc = res.split("|")[2][1:3]
+	except:
+		pass
+	
+	return asn,cc
 
 def getDomainId(db,domain):
 	if domain is None:
@@ -80,7 +95,7 @@ def getDomainId(db,domain):
 	try:
 		domain = domain.lower()
 		strSql = "insert into domain (domain) values('"+domain+"')"
-        	db.query(strSql)
+		db.query(strSql)
 		db.commit()
 	except:
 		pass
@@ -97,22 +112,22 @@ def getDomainId(db,domain):
 def getEmailLocalId(db,local):
 	if local is None:
 		local = ""
-        try:
+	try:
 		local = local.lower()
-                strSql = "insert into emailLocal (emailLocal) values('"+local+"')"
-                db.query(strSql)
+		strSql = "insert into emailLocal (emailLocal) values('"+local+"')"
+		db.query(strSql)
 		db.commit()
-        except:
-                pass
-        strSql = "select emailLocalId from emailLocal where emailLocal='"+local+"';"
-        db.query(strSql)
-        result = db.store_result()
+	except:
+		pass
+	strSql = "select emailLocalId from emailLocal where emailLocal='"+local+"';"
+	db.query(strSql)
+	result = db.store_result()
 	if result is not None:
-        	row = result.fetch_row(1,1)[0]
-                emailLocalId = row['emailLocalId']
-        else:
-                emailLocalId = 0
-        return emailLocalId
+		row = result.fetch_row(1,1)[0]
+		emailLocalId = row['emailLocalId']
+	else:
+		emailLocalId = 0
+	return emailLocalId
 
 def getUrl(db,emailId,arrivalDate,listurl):
 	for urlitem in listurl:
@@ -125,48 +140,48 @@ def getUrl(db,emailId,arrivalDate,listurl):
 		if len(url)>999:
 			url = url[:999]
 		strSql = "select urlId from url where url='"+url+"';"
-                db.query(strSql)
-                result = db.store_result()
-                if result is not None:
-                        try:
-                                row = result.fetch_row(1,1)[0]
-                                urlId = row['urlId']
+		db.query(strSql)
+		result = db.store_result()
+		if result is not None:
+			try:
+				row = result.fetch_row(1,1)[0]
+				urlId = row['urlId']
 				found=True
-                        except:
-                                urlId = 0
+			except:
+				urlId = 0
 		if not found:
 			try:
 				strSql1 = "insert into url (firstSeen,lastSeen,urlIp,urlDomainId,urlAsn,url) values('%s','%s',INET_ATON('%s'),%s,%s,'%s')" % (arrivalDate,arrivalDate,ip,urlDomainId,urlAsn,url)
 				db.query(strSql1)
 				db.commit()
-        		except:
-                		pass
-        		strSql = "select urlId from url where url='"+url+"';"
+			except:
+				pass
+			strSql = "select urlId from url where url='"+url+"';"
 			db.query(strSql)
-        		result = db.store_result()
+			result = db.store_result()
 			if result is not None:
 				try:
-        				row = result.fetch_row(1,1)[0]
-                			urlId = row['urlId']
+					row = result.fetch_row(1,1)[0]
+					urlId = row['urlId']
 				except:
 					print strSql1
 					print strSql
 					urlId = 0
-        		else:
-                		urlId = 0
-        	try:
+			else:
+				urlId = 0
+		try:
 			strSql = "update url set lastSeen='%s' where urlId=%s" % (arrivalDate,urlId)
-                        db.query(strSql)
-                        db.commit()
+			db.query(strSql)
+			db.commit()
 		except:
 			print strSql
 			pass
 		try:
-                        strSql = "insert into emailUrl (emailId,urlId) values(%s,%s)" % (emailId,urlId)
-                        db.query(strSql)
+			strSql = "insert into emailUrl (emailId,urlId) values(%s,%s)" % (emailId,urlId)
+			db.query(strSql)
 			db.commit()
-                except:
-                        pass
+		except:
+			pass
 
 def getFile(db,emailId,arrivalDate,md5):
 	for md5Item in md5:
@@ -174,44 +189,44 @@ def getFile(db,emailId,arrivalDate,md5):
 		filename = md5item[1][:255]
 		print hash,filename
 		try:
-                        strSql = "insert into file (firstSeen,lastSeen,hash,filename) values('%s','%s','%s','%s')" % (arrivalDate,arrivalDate,hash,filename)
-                        db.query(strSql)
-                        db.commit()
-                except:
-                        pass
-                strSql = "select fileId from file where hash='"+hash+"';"
-                db.query(strSql)
-                result = db.store_result()
-                if result is not None:
-                        row = result.fetch_row(1,1)[0]
-                        fileId = row['fileId']
-                else:
-                        fileId = 0
-                try:
-                        strSql = "update file set lastSeen='%s' where urlId=%s" % (arrivalDate,fileId)
-                        db.query(strSql)
-                        db.commit()
-                except:
+			strSql = "insert into file (firstSeen,lastSeen,hash,filename) values('%s','%s','%s','%s')" % (arrivalDate,arrivalDate,hash,filename)
+			db.query(strSql)
+			db.commit()
+		except:
+			pass
+		strSql = "select fileId from file where hash='"+hash+"';"
+		db.query(strSql)
+		result = db.store_result()
+		if result is not None:
+			row = result.fetch_row(1,1)[0]
+			fileId = row['fileId']
+		else:
+			fileId = 0
+		try:
+			strSql = "update file set lastSeen='%s' where urlId=%s" % (arrivalDate,fileId)
+			db.query(strSql)
+			db.commit()
+		except:
 			print strSql
-                        pass
-                try:
-                        strSql = "insert into emailFile (emailId,fileId) values(%s,%s)" % (emailId,fileId)
-                        db.query(strSql)
-                        db.commit()
-                except:
-                        pass	
+			pass
+		try:
+			strSql = "insert into emailFile (emailId,fileId) values(%s,%s)" % (emailId,fileId)
+			db.query(strSql)
+			db.commit()
+		except:
+			pass	
 
 pid = str(os.getpid())
 pidfile = "forensic-mysql.pid"
 
 if os.path.isfile(pidfile):
-    old_pid = file(pidfile, 'r').read()
-    if os.path.exists("/proc/%s" % old_pid):
-    	print "%s already exists, exiting" % pidfile
-    	sys.exit()
-    else:
-	print "%s is there but process not running, removing it" % pidfile
-        os.unlink(pidfile)
+	old_pid = file(pidfile, 'r').read()
+	if os.path.exists("/proc/%s" % old_pid):
+		print "%s already exists, exiting" % pidfile
+		sys.exit()
+	else:
+		print "%s is there but process not running, removing it" % pidfile
+		os.unlink(pidfile)
 	
 file(pidfile, 'w').write(pid)
 
@@ -250,7 +265,6 @@ r, data = imap.search(None, sentsince)
 ids = data[0]
 id_list = ids.split()
 for num in id_list:
-#for num in range(12000,14000):
 	r, data = imap.fetch(num, '(RFC822)')
 	msg = email.message_from_string(data[0][1])
 	feedbackreport = ""
@@ -284,11 +298,11 @@ for num in id_list:
 	if limsg ['subject'].find("Automatic reply") >=0 :
 		liautosubmitted="auto-replied"
 	if limsg ['subject'].find("Delivery Failure") >=0 :
-                bounce=True
+		bounce=True
 	if limsg ['subject'].find("failure notice") >=0 :
 		bounce=True
-        if limsg ['subject'].find("DELIVERY FAILURE") >=0 :
-                bounce=True
+	if limsg ['subject'].find("DELIVERY FAILURE") >=0 :
+		bounce=True
 
 
 	limsg ['feedbackType'] = ""
@@ -331,15 +345,15 @@ for num in id_list:
 		if item[0] == 'Feedback-Type':
 			limsg ['feedbackType'] = unicode(item[1],errors='replace')
 		if item[0] == 'Original-Rcpt-To':
-                        limsg ['Original-Rcpt-To'] = unicode(item[1],errors='replace')
-                if item[0] == 'Reported-Domain':
-                        limsg ['Reported-Domain'] = unicode(item[1],errors='replace')
+			limsg ['Original-Rcpt-To'] = unicode(item[1],errors='replace')
+		if item[0] == 'Reported-Domain':
+			limsg ['Reported-Domain'] = unicode(item[1],errors='replace')
 		if item[0] == 'Delivery-Result':
-                        limsg ['Delivery-Result'] = unicode(item[1],errors='replace')
+			limsg ['Delivery-Result'] = unicode(item[1],errors='replace')
 		if item[0] == 'Message-ID':
-                        limsg ['messageId'] = unicode(item[1],errors='replace')
+			limsg ['messageId'] = unicode(item[1],errors='replace')
 		if item[0] == 'Authentication-Results':
-                        limsg ['Authentication-Results'] = unicode(item[1],errors='replace')
+			limsg ['Authentication-Results'] = unicode(item[1],errors='replace')
 
 	limsg ['inNetwork'] = isInNetwork
 	
@@ -352,7 +366,7 @@ for num in id_list:
 	except:
 		print 'message: error, %s' % num
 	#print orgmsg
-        #print "-------******************"
+		#print "-------******************"
 	urls=[]
 	md5=[]
 	msg3 = email.message_from_string(orgmsg)
@@ -377,12 +391,12 @@ for num in id_list:
 	for url in urls:
 		o = urlparse.urlparse(url[0])
 		try:
-      			reportanswers = dns.resolver.query(o.hostname, 'A')
+			reportanswers = dns.resolver.query(o.hostname, 'A')
 			ip = reportanswers[0].to_text()
-    		#except dns.exception.DNSException as e:
+			#except dns.exception.DNSException as e:
 		except Exception, err:
-      			ip = ""
-		      	print '  A error: %s' % str(err)
+			ip = ""
+			print '  A error: %s' % str(err)
 		listurl = listurl +[(ip,o.hostname,url[0])]
 
 	#storing results in db
@@ -393,37 +407,40 @@ for num in id_list:
 	except:
 		local = ""
 		domain = ""
+	
 	originalMailFromLocalId = getEmailLocalId(db,local)
 	originalMailFromDomainId = getDomainId(db,domain)
 	
 	try:
 		(local,domain)=limsg ['Original-Rcpt-To'].split('@',2)
-        except:
-                local = ""
-                domain = ""
-        originalRcptToLocalId = getEmailLocalId(db,local)
-        originalRcptToDomainId = getDomainId(db,domain)
+	except:
+		local = ""
+		domain = ""
+	
+	originalRcptToLocalId = getEmailLocalId(db,local)
+	originalRcptToDomainId = getDomainId(db,domain)
 
 	reverse = dns.reversename.from_address(limsg ['sourceIP'])
 	try:
 		reportanswers = dns.resolver.query(reverse, 'PTR')
-                domain = reportanswers[0].to_text()
-	#except dns.exception.DNSException as e:
+		domain = reportanswers[0].to_text()
 	except Exception, err:
 		domain = ""
 		print '  PTR error: %s' % str(err)
+
 	sourceDomainId = getDomainId(db,domain)
 
 	res = match_emails.findall(limsg ['from'])
 	try:
-                (local,domain)=res[0].split('@',2)
-        except:
-                local = ""
-                domain = ""
-        originalFromLocalId = getEmailLocalId(db,local)
-        originalFromDomainId = getDomainId(db,domain)
+		(local,domain)=res[0].split('@',2)
+	except:
+		local = ""
+		domain = ""
+	
+	originalFromLocalId = getEmailLocalId(db,local)
+	originalFromDomainId = getDomainId(db,domain)
 
-	sourceAsn = getIp4ToAsn(limsg ['sourceIP'])
+	(sourceAsn,countryCode) = getIp4ToAsnCc(limsg ['sourceIP'])
 
 	deliveryResult="none"
 	if "dis=reject" in limsg ['Authentication-Results']:
@@ -437,8 +454,8 @@ for num in id_list:
 		strSql = strSql + "feedbackType,"
 		strSql = strSql + "emailType,"
 		strSql = strSql + "originalMailFromLocalId, originalMailFromDomainId,originalRcptToLocalId,originalRcptToDomainId,"
-		strSql = strSql + "arrivalDate,messageId,authenticationResults,sourceIp, sourceDomainId, sourceAsn,"
-                strSql = strSql + "deliveryResult,"
+		strSql = strSql + "arrivalDate,messageId,authenticationResults,sourceIp, sourceDomainId, sourceAsn, countryCode,"
+		strSql = strSql + "deliveryResult,"
 		strSql = strSql + "reportedDomainId,"
 		strSql = strSql + "originalFromLocalId, originalFromDomainId,"
 		strSql = strSql + "subject,content)"
@@ -451,14 +468,13 @@ for num in id_list:
 		else:
 			strSql = strSql + "'normal',"
 		strSql = strSql + "%s,%s," % (originalMailFromLocalId,originalMailFromDomainId)
-       		strSql = strSql + "%s,%s," % (originalRcptToLocalId,originalRcptToLocalId)
+		strSql = strSql + "%s,%s," % (originalRcptToLocalId,originalRcptToLocalId)
 		strSql = strSql + "'%s','%s','%s',INET_ATON('%s'),%s," % (arrivalDate,limsg ['messageId'],limsg ['Authentication-Results'],limsg ['sourceIP'],sourceDomainId)
-        	strSql = strSql + "%s," % (sourceAsn)
-                strSql = strSql + "'%s'," % (deliveryResult)
+		strSql = strSql + "%s,'%s'," % (sourceAsn,countryCode)
+		strSql = strSql + "'%s'," % (deliveryResult)
 		strSql = strSql + "%s," % (reportedDomainId)
-        	strSql = strSql + "%s,%s," % (originalFromLocalId, originalFromDomainId)
+		strSql = strSql + "%s,%s," % (originalFromLocalId, originalFromDomainId)
 		strSql = strSql + "'%s','%s'" % (db.escape_string(limsg ['subject']),db.escape_string(limsg['msg']))
-        	#strSql = strSql + "%s','%s'" % (limsg ['subject'],limsg['msg'])
 		strSql = strSql + ")"
 		#print strSql
 		cur = db.cursor()
@@ -466,7 +482,7 @@ for num in id_list:
 		emailId = cur.lastrowid
 		db.commit()
 		cur.close()
-		print emailId
+		print emailId,
 		getUrl(db,emailId,arrivalDate,listurl)
 		print "1 ",
 		getFile(db,emailId,arrivalDate,md5)

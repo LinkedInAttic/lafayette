@@ -1,6 +1,9 @@
 CHANGELOG
 =========
 
+2013/01/18 - Franck Martin
+  - adding countryCode in arfEmail based on location of ASN
+
 2013/01/16 - Franck Martin
   - move config in a separate file
   - fix css to ensure data does not bleed outside the tables
