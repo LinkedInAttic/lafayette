@@ -1,0 +1,68 @@
+{% extends "layout.html" %}
+{% block body %}
+<script src="http://d3js.org/d3.v2.js"></script>
+<script src="{{ url_for('static', filename='countries_data.js') }}"></script>
+<h3>
+      <span>Country</span>
+</h3>
+<div id="maparea"></div>
+<script>
+
+var margin = {top: 20, right: 20, bottom: 20, left: 20},
+    width = 960 - margin.left - margin.right,
+    height = 500 - margin.top - margin.bottom;
+
+var data,
+	xy = d3
+		.geo
+		.equirectangular()
+		.scale(width)
+		.translate([(width + margin.left + margin.right)/2, (height + margin.top + margin.bottom)/2]),
+
+	path = d3
+		.geo
+		.path()
+		.projection(xy),
+
+	svg = d3.select("#maparea").append('svg')
+		.attr("width", width + margin.left + margin.right)
+    	.attr("height", height + margin.top + margin.bottom)
+    	.append("g")
+    	.attr("transform", "translate(" + margin.left + "," + margin.top + ")"),
+
+ 	countries = svg
+		.append('svg:g')
+		.attr('id', 'countries');
+
+
+/* World Map */
+
+countries.selectAll('path')
+	.data(window.countries_data.features) 
+	.enter()
+	.append('svg:path')
+	.attr('d', path)
+	.attr('id', function(d) {return d.id})
+	.attr('fill', 'rgba(29,91,85,1)')
+	.attr('stroke', 'rgba(0,0,0,1)')
+	.attr('stroke-width', 1)
+	.on("mouseover", function(d, i) { d3.select("h3 span").text(d.properties.name); });
+
+{% for entry in entries %}
+svg.select("#{{ entry.countryCode }}")
+	.attr('fill', 'rgba({{ (entry.total*255)//maxTotal }},10,10,1)')
+	.on("mouseover", function(d, i) { d3.select("h3 span").text(d.properties.name+': {{ entry.total }}'); });
+{% endfor %}
+
+</script>
+<h3>Top 20 ASN source of reported emails</h3>
+<table class="table table-hover">
+	<thead><tr><th width="50px">ASN</th><th width="50px">emails</th><th width="50px">Country</th><th width="100px">Date</th><th>name</th></tr></thead>
+	<tbody>
+{% for entry in entriesAsn %}
+	<tr><td><a href="http://bgp.he.net/AS{{ entry.sourceAsn }}" target="_blank">{{ entry.sourceAsn }}</a></td><td>{{ entry.total }}</td><td>{{ entry.countryCode }}</td><td>{{ entry.createDate }}</td><td>{{ entry.name }}</td></tr>
+{% endfor %}
+	</tbody>
+</table>
+
+{% endblock %}

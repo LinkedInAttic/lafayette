@@ -1,6 +1,12 @@
 CHANGELOG
 =========
 
+2013/01/20 - Franck Martin
+  -adding a source map of reported emails
+  -allowing to select emails based on a day range
+  -allowing to select urls based on a day range
+  -adding indexes to table arfEmail and url
+
 2013/01/18 - Franck Martin
   - adding countryCode in arfEmail based on location of ASN
 

@@ -39,7 +39,7 @@ dbName=config.get('db','dbName')
 dbPassword=config.get('db','dbPassword')
 
 imapHost=config.get('mailbox','imapHost')
-impaUser=config.get('mailbox','impaUser')
+imapUser=config.get('mailbox','imapUser')
 imapPassword=config.get('mailbox','imapPassword')
 
 networks = {}
@@ -258,7 +258,7 @@ db=MySQLdb.connect(host=dbHost,user=dbUser,passwd=dbPassword,db=dbName)
 db.autocommit(True)
 
 imap = imaplib.IMAP4_SSL(imapHost)
-imap.login(impaUser, imapPassword)
+imap.login(imapUser, imapPassword)
 r, data = imap.select('INBOX')
 r, data = imap.search(None, sentsince)
 #r, data = imap.search(None,'ALL')

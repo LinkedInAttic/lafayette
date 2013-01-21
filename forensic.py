@@ -22,6 +22,8 @@ import MySQLdb
 import dns.resolver
 import os
 from pprint import pprint
+from datetime import date, datetime, timedelta
+import dns.resolver
 
 from ConfigParser import SafeConfigParser
 
@@ -50,9 +52,22 @@ dbUser=config.get('db','dbUser')
 dbName=config.get('db','dbName')
 dbPassword=config.get('db','dbPassword')
 
-
-
 # end of local config
+
+def getAsnInfo(asn):
+    resAsn = ""
+    countryCode = ""
+    rir = ""
+    createDate =""
+    name = ""
+    try:
+        query = "AS%s.asn.cymru.com" % (asn)
+        reportanswers = dns.resolver.query(query, 'TXT')
+        info = reportanswers[0].to_text()[1:-1]
+        (resAsn,countryCode,rir,createDate,name) = info.split("|",4)
+    except:
+        pass
+    return (resAsn,countryCode,rir,createDate,name)
 
 def getEmailAbuseFromIp(ip):
     res=""
@@ -112,7 +127,7 @@ def sendArf(item):
 
 @app.before_request
 def before_request():
-    g.db=MySQLdb.connect(host=dbHost,user=dbUser,passwd=dbPassword,db=dbName)
+    g.db=MySQLdb.connect(host=dbHost,user=dbUser,passwd=dbPassword,db=dbName,charset = "utf8",use_unicode = True)
     g.db.autocommit(True)
     is_authorized()
 
@@ -142,13 +157,34 @@ def displayMessage(emailId):
 @app.route('/url/pattern/<pattern>')
 @app.route('/url/pattern/<pattern>/limit/')
 @app.route('/url/pattern/<pattern>/limit/<int:limit>')
-def url(pattern="%",limit=50):
-    strSql='select urlId, INET_NTOA(urlIp) as Ip, urlAsn, url from url where url like "%s" order by urlId desc limit %s' % (pattern,limit)
+@app.route('/url/pattern/<pattern>/days/<int:days>')
+@app.route('/url/pattern/<pattern>/days/<int:days>/daysago/<int:daysago>')
+@app.route('/url/days/<int:days>')
+@app.route('/url/days/<int:days>/daysago/<int:daysago>')
+def url(pattern="%",limit=50,days=0,daysago=0):
+    strSqlDate = ''
+    strSqlLimit = ''
+    titleDate = ''
+    titleLimit = ''
+    if days>0:
+        today = datetime.utcnow()
+        today = today.date()
+        firstday = today - timedelta(days+daysago)
+        lastday = today - timedelta(daysago)
+        strSqlDate = 'lastSeen >="%s" and lastSeen <="%s 23:59:59" and ' % (firstday.strftime('%Y-%m-%d'),lastday.strftime('%Y-%m-%d'))
+        titleDate = ' %s - %s UTC ' % (firstday.strftime('%Y-%m-%d'),lastday.strftime('%Y-%m-%d'))
+        limit = 0
+
+    if limit>0:
+        strSqlLimit = 'limit %s' % limit
+        titleLimit = 'limit %s' % limit
+
+    strSql='select urlId, INET_NTOA(urlIp) as Ip, urlAsn, url from url where %s url like "%s" order by urlId desc %s' % (strSqlDate, pattern, strSqlLimit)
     cur = g.db.cursor()
     cur.execute(strSql)
     entries = [dict(urlId=row[0], Ip=row[1], urlAsn=row[2], url=row[3]) for row in cur.fetchall()]
     cur.close()
-    title = "URLs with a sspecific pattern"
+    title = "URLs with the pattern '%s' %s%s" % (pattern, titleDate, titleLimit)
     return render_template('url_list.html', entries=entries, title=title)
 
 @app.route('/url/subject/pattern/<pattern>')
@@ -166,17 +202,38 @@ def urllistSubject(pattern="%"):
 @app.route('/email/type/<emailType>')
 @app.route('/email/type/<emailType>/limit/')
 @app.route('/email/type/<emailType>/limit/<int:limit>')
-def displayMailList(emailType=None,limit=50):
+@app.route('/email/type/<emailType>/days/<int:days>')
+@app.route('/email/type/<emailType>/days/<int:days>/daysago/<int:daysago>')
+@app.route('/email/days/<int:days>')
+@app.route('/email/days/<int:days>/daysago/<int:daysago>')
+def displayMailList(emailType=None,limit=50,days=0,daysago=0):
+    strSqlDate = ''
+    strSqlLimit = ''
+    titleDate = ''
+    titleLimit = ''
+    if days>0:
+        today = datetime.utcnow()
+        today = today.date()
+        firstday = today - timedelta(days+daysago)
+        lastday = today - timedelta(daysago)
+        strSqlDate = 'arrivalDate >="%s" and arrivalDate <="%s 23:59:59" and ' % (firstday.strftime('%Y-%m-%d'),lastday.strftime('%Y-%m-%d'))
+        titleDate = ' %s - %s UTC ' % (firstday.strftime('%Y-%m-%d'),lastday.strftime('%Y-%m-%d'))
+        limit = 0
+
+    if limit>0:
+        strSqlLimit = 'limit %s' % limit
+        titleLimit = 'limit %s' % limit
+
     strSqlEmailType=""
     if emailType is not None:
         if emailType=="normal" or emailType=="bounce" or emailType=="auto-replied":
             strSqlEmailType='and emailType="%s"' % emailType    
-    strSql='select e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f where e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId %s order by emailId desc limit %s' % (strSqlEmailType,limit)
+    strSql='select e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f where %s e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId %s order by emailId desc %s' % (strSqlDate, strSqlEmailType, strSqlLimit)
     cur = g.db.cursor()
     cur.execute(strSql)
     entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceDomain=row[4], deliveryResult=row[5], subject=row[6]) for row in cur.fetchall()]
     cur.close()
-    title = "Email List" 
+    title = "Email List%s%s" % (titleDate,titleLimit) 
     return render_template('mail_list.html', entries=entries, title=title)
 
 @app.route('/email/urlId/<int:urlId>')
@@ -193,13 +250,32 @@ def displayMailListFromUrl(urlId=0):
 @app.route('/email/subject/<subject>')
 @app.route('/email/subject/<subject>/limit/')
 @app.route('/email/subject/<subject>/limit/<int:limit>')
-def displayMailListSubject(subject="%",limit=50):
-    strSql='select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f where e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and e.subject like "%s" order by emailId desc limit %s' % (subject,limit)
+@app.route('/email/subject/<subject>/days/<int:days>')
+@app.route('/email/subject/<subject>/days/<int:days>/daysago/<int:daysago>')
+def displayMailListSubject(subject="%",limit=50,days=0,daysago=0):
+    strSqlDate = ''
+    strSqlLimit = ''
+    titleDate = ''
+    titleLimit = ''
+    if days>0:
+        today = datetime.utcnow()
+        today = today.date()
+        firstday = today - timedelta(days+daysago)
+        lastday = today - timedelta(daysago)
+        strSqlDate = 'arrivalDate >="%s" and arrivalDate <="%s 23:59:59" and ' % (firstday.strftime('%Y-%m-%d'),lastday.strftime('%Y-%m-%d'))
+        titleDate = ' %s - %s UTC ' % (firstday.strftime('%Y-%m-%d'),lastday.strftime('%Y-%m-%d'))
+        limit = 0
+
+    if limit>0:
+        strSqlLimit = 'limit %s' % limit
+        titleLimit = 'limit %s' % limit
+
+    strSql='select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f where %s e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and e.subject like "%s" order by emailId desc %s' % (strSqlDate, subject, strSqlLimit)
     cur = g.db.cursor()
     cur.execute(strSql)
     entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceDomain=row[4], deliveryResult=row[5], subject=row[6]) for row in cur.fetchall()]
     cur.close()
-    title = "Emails with a specific subject"
+    title = "Emails with a specific subject%s%s" % (titleDate,titleLimit) 
     return render_template('mail_list.html', entries=entries, title=title)
 
 @app.route('/email/url/pattern/')
@@ -246,6 +322,38 @@ def emailGraph():
         pass
     title = "Email bar graph"
     return render_template('email_graph.html', entries=entries, title=title)
+
+@app.route('/email/map')
+@app.route('/email/map/days/<int:days>')
+@app.route('/email/map/days/<int:days>/daysago/<int:daysago>')
+def emailMap(days=7,daysago=0):
+    today = datetime.utcnow()
+    today = today.date()
+    firstday = today - timedelta(days+daysago)
+    lastday = today - timedelta(daysago)
+
+    strSql = 'select countryCode, count(emailId) as total from arfEmail where arrivalDate >="%s" and arrivalDate <="%s 23:59:59" and reported=True group by countryCode;'  % (firstday.strftime('%Y-%m-%d'),lastday.strftime('%Y-%m-%d'))
+    cur = g.db.cursor()
+    cur.execute(strSql)
+    entries = [dict(countryCode=row[0], total=row[1]) for row in cur.fetchall()]
+    maxTotal = 0
+    for entry in entries:
+        if entry['total']>maxTotal:
+            maxTotal=entry['total']
+    cur.close()
+
+    strSql = 'select sourceAsn, count(emailId) as total from arfEmail where arrivalDate >="%s" and arrivalDate <="%s 23:59:59" and reported=True group by sourceAsn order by total desc limit 20;'  % (firstday.strftime('%Y-%m-%d'),lastday.strftime('%Y-%m-%d'))
+    cur = g.db.cursor()
+    cur.execute(strSql)
+    entriesAsn = []
+    for row in cur.fetchall():
+        (asn,countryCode,rir,createDate,name)=getAsnInfo(row[0])
+        entriesAsn.append(dict(sourceAsn=row[0], total=row[1], countryCode=countryCode, createDate=createDate, name=name))
+    cur.close()
+
+    title = 'Reported Emails Map %s - %s UTC' % (firstday.strftime('%Y-%m-%d'),lastday.strftime('%Y-%m-%d'))
+    #return render_template('email_map.html', entries=entries, title=title)
+    return render_template('email_map.html', entries=entries, maxTotal=maxTotal, entriesAsn = entriesAsn, title=title)
 
 @app.route('/reportemail',methods=['GET','POST'])
 def reportEmail():
