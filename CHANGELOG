@@ -1,6 +1,10 @@
 CHANGELOG
 =========
 
+2013/01/27 - Franck Martin
+  -improved ARF text to better guide people at abuse desks
+  -improved reporting of URLs by adding first and last seen dates
+
 2013/01/20 - Franck Martin
   -adding a source map of reported emails
   -allowing to select emails based on a day range

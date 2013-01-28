@@ -1,10 +1,10 @@
 {% extends "layout.html" %}
 {% block body %}
   <table class="table table-hover">
-    <thead><tr><th width="80px">urlId</th><th width="120px">IP</th><th width="50px">ASN</th><th>url</th></tr></thead>
+    <thead><tr><th width="80px">urlId</th><th width="80px">first</th><th width="80px">last</th><th width="120px">IP</th><th width="50px">ASN</th><th>url</th></tr></thead>
     <tbody>
   {% for entry in entries %}
-    <tr><td><a href="{{ url_for('displayMailListFromUrl',urlId=entry.urlId) }}">{{ entry.urlId }}</a></td><td>{{ entry.Ip }}</td><td>{{ entry.urlAsn }}</td><td>{{ entry.url|string|escape }}</td></tr>
+    <tr><td><a href="{{ url_for('displayMailListFromUrl',urlId=entry.urlId) }}">{{ entry.urlId }}</a></td><td>{{ entry.firstSeen }}</td><td>{{ entry.lastSeen }}</td><td>{{ entry.Ip }}</td><td><a href="http://bgp.he.net/AS{{ entry.urlAsn }}" target="_blank">{{ entry.urlAsn }}</a></td><td>{{ entry.url|string|escape }}</td></tr>
   {% else %}
     <tr><td><em>Unbelievable.  No entries here so far</em></td></tr>
   {% endfor %}

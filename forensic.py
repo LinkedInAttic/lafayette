@@ -93,9 +93,14 @@ def sendArf(item):
     msg["From"] = reportSender
     msg["Subject"] = "Abuse report for: "+str(item['subject'])
 
-    text = "This is an email in the abuse report format for an email message received from \r\n"
+    text = "This is an email in the abuse report format (ARF) for an email message received from \r\n"
     text = text+"IP "+str(item['sourceIp'])+" "+str(item['sourceDomain'])+" on "+str(item['arrivalDate'])+" UTC.\r\n"
-    text = text+"This report likely indicates a compromised machine and may contain URLs to malware, treat with caution!\r\n"
+    text = text+"This report likely indicates a compromised machine and may contain URLs to malware, treat with caution!\r\n\r\n"
+    text = text+"The attached email was selected amongst emails that failed DMARC,\r\n"
+    text = text+"therefore it indicates that the author tried to pass for someone else\r\n"
+    text = text+"indicating fraud and not spam. The faster you fix or isolate the compromised machine, \r\n"
+    text = text+"the better you protect your customers or members and the Internet at large.\r\n\r\n"
+    text = text+"This ARF report contains all the information you will need to asses the problem.\r\n"
     text = text+"For more information about this format please see http://tools.ietf.org/html/rfc6591.\r\n";
 
     msgtxt = MIMEText(text)
@@ -108,7 +113,7 @@ def sendArf(item):
     text = text + "User-Agent: pyforensic/1.0\r\n"
     text = text + "Version: 1.0\r\n"
     text = text + "Source-IP: "+str(item['sourceIp'])+"\r\n"
-    text = text + "Arrival-Date: "+str(item['arrivalDate'])+"\r\n"
+    text = text + "Arrival-Date: "+str(item['arrivalDate'])+" UTC\r\n"
 
     msgreport.set_payload(text)
     msg.attach(msgreport)
@@ -179,22 +184,22 @@ def url(pattern="%",limit=50,days=0,daysago=0):
         strSqlLimit = 'limit %s' % limit
         titleLimit = 'limit %s' % limit
 
-    strSql='select urlId, INET_NTOA(urlIp) as Ip, urlAsn, url from url where %s url like "%s" order by urlId desc %s' % (strSqlDate, pattern, strSqlLimit)
+    strSql='select urlId, firstSeen, lastSeen, INET_NTOA(urlIp) as Ip, urlAsn, url from url where %s url like "%s" order by lastSeen desc %s' % (strSqlDate, pattern, strSqlLimit)
     cur = g.db.cursor()
     cur.execute(strSql)
-    entries = [dict(urlId=row[0], Ip=row[1], urlAsn=row[2], url=row[3]) for row in cur.fetchall()]
+    entries = [dict(urlId=row[0], firstSeen=row[1], lastSeen=row[2], Ip=row[3], urlAsn=row[4], url=row[5]) for row in cur.fetchall()]
     cur.close()
     title = "URLs with the pattern '%s' %s%s" % (pattern, titleDate, titleLimit)
     return render_template('url_list.html', entries=entries, title=title)
 
 @app.route('/url/subject/pattern/<pattern>')
 def urllistSubject(pattern="%"):
-    strSql='select distinct c.urlId as urlId, INET_NTOA(c.urlIp) as Ip, c.urlAsn as urlAsn, c.url as url from arfEmail a, emailUrl b, url c where a.emailId=b.emailId and b.urlId = c.urlId and a.subject like "%s" order by urlId desc' % pattern
+    strSql='select distinct c.urlId as urlId, c.firstSeen, c.lastSeen, INET_NTOA(c.urlIp) as Ip, c.urlAsn as urlAsn, c.url as url from arfEmail a, emailUrl b, url c where a.emailId=b.emailId and b.urlId = c.urlId and a.subject like "%s" order by c.lastSeen desc' % pattern
     cur = g.db.cursor()
     cur.execute(strSql)
-    entries = [dict(urlId=row[0], Ip=row[1], urlAsn=row[2], url=row[3]) for row in cur.fetchall()]
+    entries = [dict(urlId=row[0], firstSeen=row[1], lastSeen=row[2], Ip=row[3], urlAsn=row[4], url=row[5]) for row in cur.fetchall()]
     cur.close()
-    title = "URLs from emails with a sepcific subject"
+    title = "URLs from emails with a subject containing %s" % pattern
     return render_template('url_list.html', entries=entries, title=title)
 
 @app.route('/email/')
@@ -275,7 +280,7 @@ def displayMailListSubject(subject="%",limit=50,days=0,daysago=0):
     cur.execute(strSql)
     entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceDomain=row[4], deliveryResult=row[5], subject=row[6]) for row in cur.fetchall()]
     cur.close()
-    title = "Emails with a specific subject%s%s" % (titleDate,titleLimit) 
+    title = "Emails with a subject containing %s%s%s" % (subject,titleDate,titleLimit) 
     return render_template('mail_list.html', entries=entries, title=title)
 
 @app.route('/email/url/pattern/')
@@ -288,7 +293,7 @@ def displayMailListUrl(pattern="%",limit=50):
     cur.execute(strSql)
     entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceDomain=row[4], deliveryResult=row[5], subject=row[6]) for row in cur.fetchall()]
     cur.close()
-    title = "Emails that contains a specific url"
+    title = "Emails that contains a url with the pattern %s" % pattern
     return render_template('mail_list.html', entries=entries, title=title)
 
 @app.route('/email/graph')
