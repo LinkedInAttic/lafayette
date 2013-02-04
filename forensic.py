@@ -355,13 +355,14 @@ def emailGraphReported():
     delta = timedelta(days=1)
     while d <= datetime.utcnow():
         day=d.strftime("%Y/%m/%d")
+        day2=d.strftime("%Y/%m/%d %a")
         total=0
         for item in data:
             if item['day']==day:
                 total=item['total']
                 break
         try:
-            entries.append(dict(day=day, total=total))
+            entries.append(dict(day=day2, total=total))
         except:
             pass
         d += delta
