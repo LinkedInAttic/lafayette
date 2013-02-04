@@ -310,6 +310,7 @@ def displayMailListUrl(pattern="%",limit=50):
     return render_template('mail_list.html', entries=entries, title=title)
 
 @app.route('/email/graph')
+@app.route('/email/graph/live')
 def emailGraph():
     strSql = 'select DATE_FORMAT(arrivalDate,"%Y/%m/%d %H") as hour, emailType, count(emailId) as total from arfEmail where arrivalDate >= DATE_SUB(CURDATE(),INTERVAL 72 HOUR) group by hour, emailType order by hour,emailType'
     cur = g.db.cursor()
@@ -341,6 +342,29 @@ def emailGraph():
     title = "Email bar graph"
     return render_template('email_graph.html', entries=entries, title=title)
 
+@app.route('/email/graph/reported')
+def emailGraphReported():
+    strSql = 'select DATE_FORMAT(arrivalDate,"%Y/%m/%d") as day, count(emailId) as total from arfEmail where arrivalDate >= DATE_SUB(CURDATE(),INTERVAL 90 DAY) and reported=True group by day order by day'
+    cur = g.db.cursor()
+    cur.execute(strSql)
+    data = [dict(day=row[0], total=row[1]) for row in cur.fetchall()]
+    cur.close()
+    entries = []
+    oldDay=data[0]['day']
+    total=0
+    for item in data:
+        if item['day']!=oldDay:
+            entries.append(dict(day=oldDay, total=total))
+            total=0
+            oldDay=item['day']
+        total = item['total']
+    try:
+        entries.append(dict(day=item['day'], total=total))
+    except:
+        pass
+    title = "Reported Email bar graph"
+    return render_template('email_graph_reported.html', entries=entries, title=title)
+
 @app.route('/email/map')
 @app.route('/email/map/days/<int:days>')
 @app.route('/email/map/days/<int:days>/daysago/<int:daysago>')
@@ -355,7 +379,9 @@ def emailMap(days=7,daysago=0):
     cur.execute(strSql)
     entries = [dict(countryCode=row[0], total=row[1]) for row in cur.fetchall()]
     maxTotal = 0
+    reportedTotal=0
     for entry in entries:
+        reportedTotal=reportedTotal+entry['total']
         if entry['total']>maxTotal:
             maxTotal=entry['total']
     cur.close()
@@ -372,7 +398,7 @@ def emailMap(days=7,daysago=0):
 
     title = 'Reported Emails Map %s - %s UTC' % (firstday.strftime('%Y-%m-%d'),lastday.strftime('%Y-%m-%d'))
     #return render_template('email_map.html', entries=entries, title=title)
-    return render_template('email_map.html', entries=entries, maxTotal=maxTotal, entriesAsn = entriesAsn, title=title)
+    return render_template('email_map.html', entries=entries, maxTotal=maxTotal, reportedTotal=reportedTotal, entriesAsn = entriesAsn, title=title)
 
 @app.route('/reportemail',methods=['GET','POST'])
 def reportEmail():
