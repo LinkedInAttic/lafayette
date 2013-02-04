@@ -69,6 +69,19 @@ def getAsnInfo(asn):
         pass
     return (resAsn,countryCode,rir,createDate,name)
 
+def getEmailAbuseFromAsn(asn):
+    res=""
+    strSql="select email from asn where asn=%s" % str(asn)
+    g.db.query(strSql)
+    result = g.db.store_result()
+    if result is not None:
+        try:
+            row = result.fetch_row(1,1)[0]
+            res = row['email']
+        except:
+            res = ""
+    return res
+
 def getEmailAbuseFromIp(ip):
     res=""
     try:
@@ -353,7 +366,8 @@ def emailMap(days=7,daysago=0):
     entriesAsn = []
     for row in cur.fetchall():
         (asn,countryCode,rir,createDate,name)=getAsnInfo(row[0])
-        entriesAsn.append(dict(sourceAsn=row[0], total=row[1], countryCode=countryCode, createDate=createDate, name=name))
+        abuseAsn=getEmailAbuseFromAsn(asn)
+        entriesAsn.append(dict(sourceAsn=row[0], total=row[1], countryCode=countryCode, createDate=createDate, name=name, abuseAsn=abuseAsn))
     cur.close()
 
     title = 'Reported Emails Map %s - %s UTC' % (firstday.strftime('%Y-%m-%d'),lastday.strftime('%Y-%m-%d'))
@@ -374,10 +388,10 @@ def reportEmail():
             Title = "Emails reported"
             
     strEmailList = ", ".join(emailList)
-    strSql = 'select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(e.sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject, content from arfEmail e, domain d, domain f where e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and emailId in (%s)' % strEmailList
+    strSql = 'select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(e.sourceIp) as sourceIp, sourceAsn, f.domain as sourceDomain, deliveryResult, subject, content from arfEmail e, domain d, domain f where e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and emailId in (%s)' % strEmailList
     cur = g.db.cursor()
     cur.execute(strSql)
-    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceIp=row[4], sourceDomain=row[5], deliveryResult=row[6], subject=row[7], content=row[8], emailAbuse="") for row in cur.fetchall()]
+    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceIp=row[4], sourceAsn=row[5], sourceDomain=row[6], deliveryResult=row[7], subject=row[8], content=row[9], emailAbuse="") for row in cur.fetchall()]
     cur.close()
     for item in entries:
         #find where to report abuse
@@ -386,6 +400,9 @@ def reportEmail():
             item['emailAbuse']=item['emailAbuse']+',reportphishing@apwg.org'
         else:
             item['emailAbuse']='reportphishing@apwg.org'
+        abuseAsn=getEmailAbuseFromAsn(item['sourceAsn'])
+        if abuseAsn!="" and item['emailAbuse'].find(abuseAsn)<0:
+            item['emailAbuse']=item['emailAbuse']+','+abuseAsn
             
         if reporting:
             sendArf(item)

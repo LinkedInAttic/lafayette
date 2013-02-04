@@ -1,6 +1,12 @@
 CHANGELOG
 =========
 
+2013/02/03 - Franck Martin
+  -adding ASN/email table to also report to abuse desk of ASN
+
+2013/01/31 - Franck Martin
+  -adding more strings to catch for auto replies
+
 2013/01/27 - Franck Martin
   -improved ARF text to better guide people at abuse desks
   -improved reporting of URLs by adding first and last seen dates

@@ -297,6 +297,10 @@ for num in id_list:
 		liautosubmitted="auto-replied"
 	if limsg ['subject'].find("Automatic reply") >=0 :
 		liautosubmitted="auto-replied"
+	if limsg ['subject'].find("Auto Reply:") >=0 :
+		liautosubmitted="auto-replied"
+	if limsg ['subject'].find("Autoreply") >=0 :
+		liautosubmitted="auto-replied"
 	if limsg ['subject'].find("Delivery Failure") >=0 :
 		bounce=True
 	if limsg ['subject'].find("failure notice") >=0 :

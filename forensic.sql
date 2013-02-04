@@ -103,3 +103,8 @@ hash VARCHAR(255) UNIQUE,
 filename VARCHAR(255),
 INDEX (hash)
 );
+
+CREATE TABLE asn (
+asn BIGINT NOT NULL PRIMARY KEY,
+email VARCHAR(255)
+);
