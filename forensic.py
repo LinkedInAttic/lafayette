@@ -350,18 +350,21 @@ def emailGraphReported():
     data = [dict(day=row[0], total=row[1]) for row in cur.fetchall()]
     cur.close()
     entries = []
-    oldDay=data[0]['day']
     total=0
-    for item in data:
-        if item['day']!=oldDay:
-            entries.append(dict(day=oldDay, total=total))
-            total=0
-            oldDay=item['day']
-        total = item['total']
-    try:
-        entries.append(dict(day=item['day'], total=total))
-    except:
-        pass
+    d = datetime.strptime(data[0]['day'],'%Y/%m/%d')
+    delta = timedelta(days=1)
+    while d <= datetime.utcnow():
+        day=d.strftime("%Y/%m/%d")
+        total=0
+        for item in data:
+            if item['day']==day:
+                total=item['total']
+                break
+        try:
+            entries.append(dict(day=day, total=total))
+        except:
+            pass
+        d += delta
     title = "Reported Email bar graph"
     return render_template('email_graph_reported.html', entries=entries, title=title)
 
