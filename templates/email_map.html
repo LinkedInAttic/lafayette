@@ -60,7 +60,7 @@ svg.select("#{{ entry.countryCode }}")
 	<thead><tr><th width="50px">ASN</th><th width="80px">emails</th><th width="40px">country</th><th width="100px">date</th><th>name</th><th>abuse email</th></tr></thead>
 	<tbody>
 {% for entry in entriesAsn %}
-	<tr><td><a href="http://bgp.he.net/AS{{ entry.sourceAsn }}" target="_blank">{{ entry.sourceAsn }}</a></td><td>{{ entry.total }} ({{((entry.total*1000)//reportedTotal)/10}}%)</td><td>{{ entry.countryCode }}</td><td>{{ entry.createDate }}</td><td>{{ entry.name }}</td><td>{{ entry.abuseAsn }}</td></tr>
+	<tr><td><a href="http://bgp.he.net/AS{{ entry.sourceAsn }}" target="_blank">{{ entry.sourceAsn }}</a></td><td><a href="{{ url_for('displayAsnList',asn=entry.sourceAsn,emailType='reported',days=days)}}" target="_blank">{{ entry.total }}</a> ({{((entry.total*1000)//reportedTotal)/10}}%)</td><td>{{ entry.countryCode }}</td><td>{{ entry.createDate }}</td><td>{{ entry.name }}</td><td>{{ entry.abuseAsn }}</td></tr>
 {% endfor %}
 	</tbody>
 </table>

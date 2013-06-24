@@ -1,6 +1,13 @@
 CHANGELOG
 =========
 
+
+2013/06/18 - Franck Martin
+  -added timer to avoid the url regex to block
+  -added more capabilities to select emails based on filename of attachments
+  -select reports by date window
+  -added check of sending IP with spamhaus
+
 2013/02/03 - Franck Martin
   -adding ASN/email table to also report to abuse desk of ASN
   -graph for reported emails over 90 days

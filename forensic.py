@@ -52,6 +52,10 @@ dbUser=config.get('db','dbUser')
 dbName=config.get('db','dbName')
 dbPassword=config.get('db','dbPassword')
 
+reportEmailCc=config.get('reports','email')
+
+zen=config.get('dnsbl','zen')
+
 # end of local config
 
 def getAsnInfo(asn):
@@ -94,14 +98,40 @@ def getEmailAbuseFromIp(ip):
         pass
     return res
 
+def getZen(ip):
+    global zen
+    if zen is None:
+        return ""
+    res="N"
+    try:
+        (ip1,ip2,ip3,ip4) = ip.split(".")
+        query = "%s.%s.%s.%s.%s" % (ip4,ip3,ip2,ip1,zen)
+        reportanswers = dns.resolver.query(query, 'A')
+        res = reportanswers[0].to_text()
+        if res != "127.0.0.1":
+            res="Z"
+    except:
+        res=""
+        pass
+    return res
+
+def addDnsbl(entries):
+    if entries is None:
+        return entries
+    for entry in entries:
+        zen=getZen(entry["sourceIp"])
+        entry.update(dnsbl=zen)
+    return entries
+
+
 def sendArf(item):
     global reportSender
     global mailSmtp
+    global reportEmailCc
 
     msg = MIMEBase('multipart','report')
     msg.set_param('report-type','feedback-report',requote=False)
 
-    #msg["To"] = "fmartin@tst.linkedin.com,franck@tst.linkedin.com";
     msg["To"] = str(item['emailAbuse'])
     msg["From"] = reportSender
     msg["Subject"] = "Abuse report for: "+str(item['subject'])
@@ -138,8 +168,19 @@ def sendArf(item):
     msg.attach(msgrfc822)
 
     s = smtplib.SMTP(mailSmtp)
-    toList = msg["To"].split(",")
-    s.sendmail(msg["From"], toList, msg.as_string())
+    # send to IP owners first
+    if msg["To"] != "":
+        toList = msg["To"].split(",")
+        s.sendmail(msg["From"], toList, msg.as_string())
+    # send a copy
+    if reportEmailCc != "":
+        toList = reportEmailCc.split(",")
+        for email in toList:
+            if msg.has_key("To"):
+               msg.replace_header("To",str(email))
+            else:
+               msg["To"]=str(email)
+            s.sendmail(msg["From"], email, msg.as_string())
     s.quit()
 
 
@@ -245,18 +286,63 @@ def displayMailList(emailType=None,limit=50,days=0,daysago=0):
     strSqlEmailType=""
     if emailType is not None:
         if emailType=="normal" or emailType=="bounce" or emailType=="auto-replied":
-            strSqlEmailType='and emailType="%s"' % emailType    
-    strSql='select e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f where %s e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId %s order by emailId desc %s' % (strSqlDate, strSqlEmailType, strSqlLimit)
+            strSqlEmailType='and emailType="%s"' % emailType
+        if emailType=="reported":
+            strSqlEmailType='and reported!=0'   
+    strSql='select e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f where %s e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId %s order by emailId desc %s' % (strSqlDate, strSqlEmailType, strSqlLimit)
     cur = g.db.cursor()
     cur.execute(strSql)
-    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceDomain=row[4], deliveryResult=row[5], subject=row[6]) for row in cur.fetchall()]
+    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceIp=row[4], sourceDomain=row[5], senderscore="NA", dnsbl="", deliveryResult=row[6], subject=row[7]) for row in cur.fetchall()]
     cur.close()
+    entries = addDnsbl(entries)
     title = "Email List%s%s" % (titleDate,titleLimit) 
+    return render_template('mail_list.html', entries=entries, title=title)
+
+@app.route('/email/asn/')
+@app.route('/email/asn/<int:asn>')
+@app.route('/email/asn/<int:asn>/type/')
+@app.route('/email/asn/<int:asn>/type/<emailType>')
+@app.route('/email/asn/<int:asn>/type/<emailType>/days/<int:days>')
+@app.route('/email/asn/<int:asn>/type/<emailType>/days/<int:days>/<int:daysago>')
+@app.route('/email/asn/<int:asn>/days/<int:days>')
+@app.route('/email/asn/<int:asn>/days/<int:days>/daysago/<int:daysago>')
+def displayAsnList(asn=0,emailType=None,limit=50,days=0,daysago=0):
+    strSqlDate = ''
+    strSqlLimit = ''
+    titleDate = ''
+    titleLimit = ''
+    if days>0:
+        today = datetime.utcnow()
+        today = today.date()
+        firstday = today - timedelta(days+daysago)
+        lastday = today - timedelta(daysago)
+        strSqlDate = 'arrivalDate >="%s" and arrivalDate <="%s 23:59:59" and ' % (firstday.strftime('%Y-%m-%d'),lastday.strftime('%Y-%m-%d'))
+        titleDate = ' %s - %s UTC ' % (firstday.strftime('%Y-%m-%d'),lastday.strftime('%Y-%m-%d'))
+        limit = 0
+
+    if limit>0:
+        strSqlLimit = 'limit %s' % limit
+        titleLimit = 'limit %s' % limit
+    titleAsn = ' for AS%s - ' % asn
+
+    strSqlEmailType=""
+    if emailType is not None:
+        if emailType=="normal" or emailType=="bounce" or emailType=="auto-replied":
+            strSqlEmailType='and emailType="%s"' % emailType
+        if emailType=="reported":
+            strSqlEmailType='and reported!=0'
+    strSql='select e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f where %s e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId %s and e.sourceAsn=%s order by emailId desc %s' % (strSqlDate, strSqlEmailType, asn, strSqlLimit)
+    cur = g.db.cursor()
+    cur.execute(strSql)
+    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceIp=row[4], sourceDomain=row[5], senderscore="NA", dnsbl="", deliveryResult=row[6], subject=row[7]) for row in cur.fetchall()]
+    cur.close()
+    entries = addDnsbl(entries)
+    title = "Email List%s%s%s" % (titleAsn,titleDate,titleLimit)
     return render_template('mail_list.html', entries=entries, title=title)
 
 @app.route('/email/urlId/<int:urlId>')
 def displayMailListFromUrl(urlId=0):
-    strSql='select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f, emailUrl g where e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and e.emailId=g.emailId and g.urlId=%s order by emailId desc' % (urlId)
+    strSql='select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f, emailUrl g where e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and e.emailId=g.emailId and g.urlId=%s order by emailId desc' % (urlId)
     cur = g.db.cursor()
     cur.execute(strSql)
     entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceDomain=row[4], deliveryResult=row[5], subject=row[6]) for row in cur.fetchall()]
@@ -288,11 +374,12 @@ def displayMailListSubject(subject="%",limit=50,days=0,daysago=0):
         strSqlLimit = 'limit %s' % limit
         titleLimit = 'limit %s' % limit
 
-    strSql='select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f where %s e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and e.subject like "%s" order by emailId desc %s' % (strSqlDate, subject, strSqlLimit)
+    strSql='select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f where %s e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and e.subject like "%s" order by emailId desc %s' % (strSqlDate, subject, strSqlLimit)
     cur = g.db.cursor()
     cur.execute(strSql)
-    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceDomain=row[4], deliveryResult=row[5], subject=row[6]) for row in cur.fetchall()]
+    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceIp=row[4], sourceDomain=row[5], senderscore="NA", dnsbl="", deliveryResult=row[6], subject=row[7]) for row in cur.fetchall()]
     cur.close()
+    entries = addDnsbl(entries)
     title = "Emails with a subject containing %s%s%s" % (subject,titleDate,titleLimit) 
     return render_template('mail_list.html', entries=entries, title=title)
 
@@ -300,13 +387,66 @@ def displayMailListSubject(subject="%",limit=50,days=0,daysago=0):
 @app.route('/email/url/pattern/<pattern>')
 @app.route('/email/url/pattern/<pattern>/limit/')
 @app.route('/email/url/pattern/<pattern>/limit/<int:limit>')
-def displayMailListUrl(pattern="%",limit=50):
-    strSql='select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f, emailUrl g, url h where e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and e.emailId=g.emailId and g.urlId=h.urlId and h.url like "%s"  order by emailId desc limit %s' % (pattern,limit)
+@app.route('/email/url/pattern/<pattern>/days/<int:days>')
+@app.route('/email/url/pattern/<pattern>/days/<int:days>/daysago/<int:daysago>')
+def displayMailListUrl(pattern="%",limit=50,days=0,daysago=0):
+    strSqlDate = ''
+    strSqlLimit = ''
+    titleDate = ''
+    titleLimit = ''
+    if days>0:
+        today = datetime.utcnow()
+        today = today.date()
+        firstday = today - timedelta(days+daysago)
+        lastday = today - timedelta(daysago)
+        strSqlDate = 'and e.arrivalDate >="%s" and e.arrivalDate <="%s 23:59:59" ' % (firstday.strftime('%Y-%m-%d'),lastday.strftime('%Y-%m-%d'))
+        titleDate = ' %s - %s UTC ' % (firstday.strftime('%Y-%m-%d'),lastday.strftime('%Y-%m-%d'))
+        limit = 0
+
+    if limit>0:
+        strSqlLimit = 'limit %s' % limit
+        titleLimit = ' limit %s' % limit
+
+    strSql='select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f, emailUrl g, url h where e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and e.emailId=g.emailId and g.urlId=h.urlId and h.url like "%s" %s order by emailId desc %s' % (pattern,strSqlDate,strSqlLimit)
     cur = g.db.cursor()
     cur.execute(strSql)
-    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceDomain=row[4], deliveryResult=row[5], subject=row[6]) for row in cur.fetchall()]
+    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceIp=row[4], sourceDomain=row[5], senderscore="NA", dnsbl="", deliveryResult=row[6], subject=row[7]) for row in cur.fetchall()]
     cur.close()
-    title = "Emails that contains a url with the pattern %s" % pattern
+    entries = addDnsbl(entries)
+    title = "Emails that contains a url with the pattern %s%s%s" % (pattern,titleDate,titleLimit)
+    return render_template('mail_list.html', entries=entries, title=title)
+
+@app.route('/email/file/pattern/')
+@app.route('/email/file/pattern/<pattern>')
+@app.route('/email/file/pattern/<pattern>/limit/')
+@app.route('/email/file/pattern/<pattern>/limit/<int:limit>')
+@app.route('/email/file/pattern/<pattern>/days/<int:days>')
+@app.route('/email/file/pattern/<pattern>/days/<int:days>/daysago/<int:daysago>')
+def displayMailListFile(pattern="%",limit=50,days=0,daysago=0):
+    strSqlDate = ''
+    strSqlLimit = ''
+    titleDate = ''
+    titleLimit = ''
+    if days>0:
+        today = datetime.utcnow()
+        today = today.date()
+        firstday = today - timedelta(days+daysago)
+        lastday = today - timedelta(daysago)
+        strSqlDate = 'and e.arrivalDate >="%s" and e.arrivalDate <="%s 23:59:59" ' % (firstday.strftime('%Y-%m-%d'),lastday.strftime('%Y-%m-%d'))
+        titleDate = ' %s - %s UTC ' % (firstday.strftime('%Y-%m-%d'),lastday.strftime('%Y-%m-%d'))
+        limit = 0
+
+    if limit>0:
+        strSqlLimit = 'limit %s' % limit
+        titleLimit = ' limit %s' % limit
+
+    strSql='select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f, emailFile g, file h where e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and e.emailId=g.emailId and g.fileId=h.fileId and h.filename like "%s" %s order by emailId desc %s' % (pattern,strSqlDate,strSqlLimit)
+    cur = g.db.cursor()
+    cur.execute(strSql)
+    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceIp=row[4], sourceDomain=row[5], senderscore="NA", dnsbl="", deliveryResult=row[6], subject=row[7]) for row in cur.fetchall()]
+    cur.close()
+    entries = addDnsbl(entries)
+    title = "Emails that contains a file with the pattern %s%s%s" % (pattern,titleDate,titleLimit)
     return render_template('mail_list.html', entries=entries, title=title)
 
 @app.route('/email/graph')
@@ -402,7 +542,7 @@ def emailMap(days=7,daysago=0):
 
     title = 'Reported Emails Map %s - %s UTC' % (firstday.strftime('%Y-%m-%d'),lastday.strftime('%Y-%m-%d'))
     #return render_template('email_map.html', entries=entries, title=title)
-    return render_template('email_map.html', entries=entries, maxTotal=maxTotal, reportedTotal=reportedTotal, entriesAsn = entriesAsn, title=title)
+    return render_template('email_map.html', entries=entries, maxTotal=maxTotal, reportedTotal=reportedTotal, entriesAsn = entriesAsn, title=title, days=days)
 
 @app.route('/reportemail',methods=['GET','POST'])
 def reportEmail():
@@ -426,10 +566,6 @@ def reportEmail():
     for item in entries:
         #find where to report abuse
         item['emailAbuse']=getEmailAbuseFromIp(item['sourceIp'])
-        if item['emailAbuse']!="":
-            item['emailAbuse']=item['emailAbuse']+',reportphishing@apwg.org'
-        else:
-            item['emailAbuse']='reportphishing@apwg.org'
         abuseAsn=getEmailAbuseFromAsn(item['sourceAsn'])
         if abuseAsn!="" and item['emailAbuse'].find(abuseAsn)<0:
             item['emailAbuse']=item['emailAbuse']+','+abuseAsn

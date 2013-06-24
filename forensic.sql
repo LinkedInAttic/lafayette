@@ -15,6 +15,8 @@
 
 CREATE DATABASE arf CHARACTER SET utf8;
 
+USE arf;
+
 CREATE TABLE arfEmail (
 emailId INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
 feedbackType ENUM('auth-failure'),
@@ -49,19 +51,19 @@ INDEX (sourceAsn),
 INDEX (countryCode),
 INDEX (reportedDomainID),
 INDEX (subject)
-);
+) ENGINE=InnoDB;
 
 CREATE TABLE emailLocal (
 emailLocalId INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
 emailLocal VARCHAR(255) UNIQUE,
 INDEX (emailLocal)
-);
+) ENGINE=InnoDB;
 
 CREATE TABLE domain (
 domainId INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
 domain VARCHAR(255) UNIQUE,
 INDEX (domain)
-);
+) ENGINE=InnoDB;
 
 CREATE TABLE emailUrl (
 emailUrlId INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -69,7 +71,7 @@ emailId INT,
 urlId INT,
 INDEX (emailId),
 INDEX (urlId)
-);
+) ENGINE=InnoDB;
 
 CREATE TABLE url (
 urlId INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -85,7 +87,7 @@ INDEX (lastSeen),
 INDEX (urlIp),
 INDEX (urlDomainId),
 INDEX (urlAsn)
-);
+) ENGINE=InnoDB;
 
 CREATE TABLE emailFile (
 emailFileId INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -93,7 +95,7 @@ emailId INT,
 fileId INT,
 INDEX (emailId),
 INDEX (fileId)
-);
+) ENGINE=InnoDB;
 
 CREATE TABLE file (
 fileId INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -102,9 +104,9 @@ lastSeen DATETIME NULL,
 hash VARCHAR(255) UNIQUE,
 filename VARCHAR(255),
 INDEX (hash)
-);
+) ENGINE=InnoDB;
 
 CREATE TABLE asn (
 asn BIGINT NOT NULL PRIMARY KEY,
 email VARCHAR(255)
-);
+) ENGINE=InnoDB;

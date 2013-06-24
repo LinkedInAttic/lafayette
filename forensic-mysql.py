@@ -23,7 +23,7 @@ import calendar
 from datetime import date, datetime, timedelta
 from dateutil.parser import parse
 import MySQLdb
-import os
+import signal,os
 
 from ConfigParser import SafeConfigParser
 
@@ -45,6 +45,9 @@ imapPassword=config.get('mailbox','imapPassword')
 networks = {}
 
 # end of local config
+
+def handleTimeOut(signum, frame0):
+   raise TimeoutError("taking too long")
 
 def addressInNetwork(ip, net):
    import socket,struct
@@ -378,7 +381,14 @@ for num in id_list:
 		ctype = orgpart.get_content_type()
 		if orgpart.get_content_maintype() == 'text':
 			orgmsgpart = orgpart.get_payload(decode=True)
-			urls = urls + match_urls.findall(orgmsgpart)
+
+                        signal.signal(signal.SIGALRM, handleTimeOut)
+                        signal.alarm(30)
+                        try:
+			  urls = urls + match_urls.findall(orgmsgpart)
+                        except Exception, err:
+                          print ' A error: %s with %s' % (str(err),orgmsgpart)
+                        signal.alarm(0)
 		else:
 			if ctype == 'message/delivery-status':
 				bounce = True
