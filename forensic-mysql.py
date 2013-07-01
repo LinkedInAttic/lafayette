@@ -438,6 +438,8 @@ for num in id_list:
 	try:
 		reportanswers = dns.resolver.query(reverse, 'PTR')
 		domain = reportanswers[0].to_text()
+		if domain[-1]==".":
+			domain=domain[:-1]
 	except Exception, err:
 		domain = ""
 		print '  PTR error: %s' % str(err)

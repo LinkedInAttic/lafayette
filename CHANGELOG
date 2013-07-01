@@ -1,6 +1,8 @@
 CHANGELOG
 =========
 
+2013/06/27 - Franck Martin
+  -added /reportspam to report a spamy email using ARF
 
 2013/06/18 - Franck Martin
   -added timer to avoid the url regex to block

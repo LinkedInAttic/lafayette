@@ -3,6 +3,8 @@ Lafayette
 
 Lafayette is a system to store various email abuse reports sent in ARF. It is organized in such a way that fraudulent emails can be easily selected, sorted and reported back to the resource owners. For instance it can be used to receive DMARC failure reports.
 
+Documentation and Screenshots at https://github.com/linkedin/lafayette/wiki
+
 How to install
 ==============
 

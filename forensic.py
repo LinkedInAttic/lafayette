@@ -24,10 +24,14 @@ import os
 from pprint import pprint
 from datetime import date, datetime, timedelta
 import dns.resolver
+import re
+import socket,struct
+import unicodedata
 
 from ConfigParser import SafeConfigParser
 
 import smtplib
+import email
 from email.message import Message
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -53,10 +57,38 @@ dbName=config.get('db','dbName')
 dbPassword=config.get('db','dbPassword')
 
 reportEmailCc=config.get('reports','email')
+reportEmailSpamCc=config.get('reports','emailSpam')
 
 zen=config.get('dnsbl','zen')
 
 # end of local config
+
+privatenet = ["127.0.0.0/8","192.168.0.0/16","172.16.0.0/12","10.0.0.0/8"]
+
+def addressInNetworkList(ip,netlist):
+    for net in netlist:
+        if addressInNetwork(ip,net):
+            return True
+    return False
+
+def addressInNetwork(ip, net):
+   ipaddr = int(''.join([ '%02x' % int(x) for x in ip.split('.') ]), 16)
+   netstr, bits = net.split('/')
+   netaddr = int(''.join([ '%02x' % int(x) for x in netstr.split('.') ]), 16)
+   mask = (0xffffffff << (32 - int(bits))) & 0xffffffff
+   return (ipaddr & mask) == (netaddr & mask)
+
+def getIp4ToAsn(ip):
+    asn = 0
+    try:
+        (ip1,ip2,ip3,ip4) = ip.split(".")
+        query = "%s.%s.%s.%s.origin.asn.cymru.com" % (ip4,ip3,ip2,ip1)
+        reportanswers = dns.resolver.query(query, 'TXT')
+        res = reportanswers[0].to_text()
+        asn = long(res.split("|")[0][1:])
+    except:
+        pass
+    return asn
 
 def getAsnInfo(asn):
     resAsn = ""
@@ -124,10 +156,11 @@ def addDnsbl(entries):
     return entries
 
 
-def sendArf(item):
+def sendArf(item, spam=False):
     global reportSender
     global mailSmtp
     global reportEmailCc
+    global reportEmailSpamCc
 
     msg = MIMEBase('multipart','report')
     msg.set_param('report-type','feedback-report',requote=False)
@@ -136,15 +169,23 @@ def sendArf(item):
     msg["From"] = reportSender
     msg["Subject"] = "Abuse report for: "+str(item['subject'])
 
-    text = "This is an email in the abuse report format (ARF) for an email message received from \r\n"
-    text = text+"IP "+str(item['sourceIp'])+" "+str(item['sourceDomain'])+" on "+str(item['arrivalDate'])+" UTC.\r\n"
-    text = text+"This report likely indicates a compromised machine and may contain URLs to malware, treat with caution!\r\n\r\n"
-    text = text+"The attached email was selected amongst emails that failed DMARC,\r\n"
-    text = text+"therefore it indicates that the author tried to pass for someone else\r\n"
-    text = text+"indicating fraud and not spam. The faster you fix or isolate the compromised machine, \r\n"
-    text = text+"the better you protect your customers or members and the Internet at large.\r\n\r\n"
-    text = text+"This ARF report contains all the information you will need to asses the problem.\r\n"
-    text = text+"For more information about this format please see http://tools.ietf.org/html/rfc6591.\r\n";
+    if spam:
+        text = "This is an email in the abuse report format (ARF) for an email message coming via these \r\n"
+        text = text+"IPs "+str(item['sourceIp'])+" on "+str(item['arrivalDate'])+".\r\n"
+        text = text+"This report indicates that the attached email was not wanted by the recipient.\r\n"
+        text = text+"This report may indicates a compromised machine and may contain URLs to malware, treat with caution!\r\n\r\n"
+        text = text+"This ARF report contains all the information you will need to assess the problem.\r\n"
+        text = text+"For more information about this format please see http://tools.ietf.org/html/rfc6591.\r\n";
+    else:
+        text = "This is an email in the abuse report format (ARF) for an email message received from \r\n"
+        text = text+"IP "+str(item['sourceIp'])+" "+str(item['sourceDomain'])+" on "+str(item['arrivalDate'])+" UTC.\r\n"
+        text = text+"This report likely indicates a compromised machine and may contain URLs to malware, treat with caution!\r\n\r\n"
+        text = text+"The attached email was selected amongst emails that failed DMARC,\r\n"
+        text = text+"therefore it indicates that the author tried to pass for someone else\r\n"
+        text = text+"indicating fraud and not spam. The faster you fix or isolate the compromised machine, \r\n"
+        text = text+"the better you protect your customers or members and the Internet at large.\r\n\r\n"
+        text = text+"This ARF report contains all the information you will need to assess the problem.\r\n"
+        text = text+"For more information about this format please see http://tools.ietf.org/html/rfc6591.\r\n";
 
     msgtxt = MIMEText(text)
     msg.attach(msgtxt)
@@ -152,10 +193,14 @@ def sendArf(item):
     msgreport = MIMEBase('message', "feedback-report")
     msgreport.set_charset("US-ASCII")
     
-    text = "Feedback-Type: fraud\r\n"
+    if spam:
+        text = "Feedback-Type: abuse\r\n"
+    else:
+        text = "Feedback-Type: fraud\r\n"
     text = text + "User-Agent: pyforensic/1.0\r\n"
     text = text + "Version: 1.0\r\n"
-    text = text + "Source-IP: "+str(item['sourceIp'])+"\r\n"
+    if not spam:
+        text = text + "Source-IP: "+str(item['sourceIp'])+"\r\n"
     text = text + "Arrival-Date: "+str(item['arrivalDate'])+" UTC\r\n"
 
     msgreport.set_payload(text)
@@ -173,14 +218,17 @@ def sendArf(item):
         toList = msg["To"].split(",")
         s.sendmail(msg["From"], toList, msg.as_string())
     # send a copy
-    if reportEmailCc != "":
-        toList = reportEmailCc.split(",")
-        for email in toList:
+    reportEmail=reportEmailCc
+    if spam:
+        reportEmail=reportEmailSpamCc
+    if reportEmail != "":
+        toList = reportEmail.split(",")
+        for emailAddress in toList:
             if msg.has_key("To"):
-               msg.replace_header("To",str(email))
+               msg.replace_header("To",str(emailAddress))
             else:
-               msg["To"]=str(email)
-            s.sendmail(msg["From"], email, msg.as_string())
+               msg["To"]=str(emailAddress)
+            s.sendmail(msg["From"], emailAddress, msg.as_string())
     s.quit()
 
 
@@ -292,7 +340,7 @@ def displayMailList(emailType=None,limit=50,days=0,daysago=0):
     strSql='select e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f where %s e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId %s order by emailId desc %s' % (strSqlDate, strSqlEmailType, strSqlLimit)
     cur = g.db.cursor()
     cur.execute(strSql)
-    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceIp=row[4], sourceDomain=row[5], senderscore="NA", dnsbl="", deliveryResult=row[6], subject=row[7]) for row in cur.fetchall()]
+    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceIp=row[4], sourceDomain=row[5], dnsbl="", deliveryResult=row[6], subject=row[7]) for row in cur.fetchall()]
     cur.close()
     entries = addDnsbl(entries)
     title = "Email List%s%s" % (titleDate,titleLimit) 
@@ -334,7 +382,7 @@ def displayAsnList(asn=0,emailType=None,limit=50,days=0,daysago=0):
     strSql='select e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f where %s e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId %s and e.sourceAsn=%s order by emailId desc %s' % (strSqlDate, strSqlEmailType, asn, strSqlLimit)
     cur = g.db.cursor()
     cur.execute(strSql)
-    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceIp=row[4], sourceDomain=row[5], senderscore="NA", dnsbl="", deliveryResult=row[6], subject=row[7]) for row in cur.fetchall()]
+    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceIp=row[4], sourceDomain=row[5], dnsbl="", deliveryResult=row[6], subject=row[7]) for row in cur.fetchall()]
     cur.close()
     entries = addDnsbl(entries)
     title = "Email List%s%s%s" % (titleAsn,titleDate,titleLimit)
@@ -377,7 +425,7 @@ def displayMailListSubject(subject="%",limit=50,days=0,daysago=0):
     strSql='select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f where %s e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and e.subject like "%s" order by emailId desc %s' % (strSqlDate, subject, strSqlLimit)
     cur = g.db.cursor()
     cur.execute(strSql)
-    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceIp=row[4], sourceDomain=row[5], senderscore="NA", dnsbl="", deliveryResult=row[6], subject=row[7]) for row in cur.fetchall()]
+    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceIp=row[4], sourceDomain=row[5], dnsbl="", deliveryResult=row[6], subject=row[7]) for row in cur.fetchall()]
     cur.close()
     entries = addDnsbl(entries)
     title = "Emails with a subject containing %s%s%s" % (subject,titleDate,titleLimit) 
@@ -410,7 +458,7 @@ def displayMailListUrl(pattern="%",limit=50,days=0,daysago=0):
     strSql='select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f, emailUrl g, url h where e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and e.emailId=g.emailId and g.urlId=h.urlId and h.url like "%s" %s order by emailId desc %s' % (pattern,strSqlDate,strSqlLimit)
     cur = g.db.cursor()
     cur.execute(strSql)
-    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceIp=row[4], sourceDomain=row[5], senderscore="NA", dnsbl="", deliveryResult=row[6], subject=row[7]) for row in cur.fetchall()]
+    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceIp=row[4], sourceDomain=row[5], dnsbl="", deliveryResult=row[6], subject=row[7]) for row in cur.fetchall()]
     cur.close()
     entries = addDnsbl(entries)
     title = "Emails that contains a url with the pattern %s%s%s" % (pattern,titleDate,titleLimit)
@@ -443,7 +491,7 @@ def displayMailListFile(pattern="%",limit=50,days=0,daysago=0):
     strSql='select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f, emailFile g, file h where e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and e.emailId=g.emailId and g.fileId=h.fileId and h.filename like "%s" %s order by emailId desc %s' % (pattern,strSqlDate,strSqlLimit)
     cur = g.db.cursor()
     cur.execute(strSql)
-    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceIp=row[4], sourceDomain=row[5], senderscore="NA", dnsbl="", deliveryResult=row[6], subject=row[7]) for row in cur.fetchall()]
+    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceIp=row[4], sourceDomain=row[5], dnsbl="", deliveryResult=row[6], subject=row[7]) for row in cur.fetchall()]
     cur.close()
     entries = addDnsbl(entries)
     title = "Emails that contains a file with the pattern %s%s%s" % (pattern,titleDate,titleLimit)
@@ -571,7 +619,7 @@ def reportEmail():
             item['emailAbuse']=item['emailAbuse']+','+abuseAsn
             
         if reporting:
-            sendArf(item)
+            sendArf(item=item,spam=False)
             strSql = 'update arfEmail set reported=1 where emailId=%s' % item['emailId']
             cur = g.db.cursor()
             cur.execute(strSql)
@@ -581,6 +629,80 @@ def reportEmail():
     if reporting:
         flash(str(nbEmailReported)+" emails have been reported to the abuse handle of each IP")
     return render_template('report_email.html', entries=entries, title=title)
+
+@app.route('/reportspam',methods=['GET','POST'])
+def reportSpam():
+    global privatenet
+    analyze=False
+    reporting=False
+    strEmail=""
+    strSourceIpList=""
+    ipList = []
+    abuseList = []
+    abuseEmailList = {}
+    match_ip = re.compile(r'.*\[(((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)).*')
+    title = "send ARF"
+    for item in request.form:
+        if item[:7]=="abuseid":
+            abuseList.append(int(item[7:]))
+        if item[:10]=="abuseemail":
+            abuseEmailList[int(item[10:])]=request.form[item]
+        if item=="email":
+            strEmail=request.form[item]
+        if item=="submit" and request.form[item]=="Analyse email":
+            analyze=True
+            Title = " Analyzed email"
+        if item=="submit" and request.form[item]=="Send ARF":
+            reporting=True
+            Title = "ARF Report sent" 
+
+    if analyze or reporting:
+        ipRawList=match_ip.findall(strEmail)
+
+        ipUniqueList = []
+        for ip in ipRawList:
+            if ip[0] not in ipUniqueList:
+                ipUniqueList.append(ip[0])
+
+        for ip in ipUniqueList:
+            if not addressInNetworkList(ip,privatenet):
+                abuseEmail=getEmailAbuseFromIp(ip)
+                asn=getIp4ToAsn(ip)
+                abuseAsn=getEmailAbuseFromAsn(asn)
+                (resAsn,countryCode,rir,createDate,asnName)=getAsnInfo(asn)
+                if abuseAsn!="":
+                    abuseEmail=abuseEmail+","+abuseAsn
+                ipList.append(dict(ip=ip,email=abuseEmail,asn=asn,asnName=asnName,asnCountryCode=countryCode))
+
+    if reporting:
+        emailList=[]
+        sourceIpList=[]
+        for id in abuseList:
+            emailEntryList=abuseEmailList[id].split(",")
+            for emailAddress in emailEntryList:
+                emailList.append(emailAddress)
+            sourceIpList.append(ipList[id-1]["ip"])
+        emailUniqueList = []
+        for emailAddress in emailList:
+            if emailAddress not in emailUniqueList:
+                emailUniqueList.append(emailAddress) 
+        sourceIpUniqueList = []
+        for sourceIp in sourceIpList:
+            if sourceIp not in sourceIpUniqueList:
+                sourceIpUniqueList.append(sourceIp)
+        strEmailList = ", ".join(emailUniqueList)
+        strSourceIpList = ", ".join(sourceIpUniqueList)
+
+        u_strEmail=strEmail.encode('ascii','replace')
+        msg=email.message_from_string(u_strEmail)
+        subject=msg.get('Subject')
+        arrivalDate=msg.get('Date')
+
+        item = dict(sourceIp=strSourceIpList, arrivalDate=arrivalDate, subject=subject, content=u_strEmail, emailAbuse=strEmailList)
+        sendArf(item=item,spam=True)
+
+        flash("this email has been reported to the abuse handle of each IP")
+    return render_template('arf.html', iplist=ipList, email=strEmail, analyze=analyze, reporting=reporting, title=title)
 
 if __name__ == '__main__':
     title = "Lafayette"
