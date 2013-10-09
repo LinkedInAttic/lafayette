@@ -9,9 +9,15 @@
   {% endif %}
   {% endif %}
   {% if analyze %}
+  Subject: {{ subject }}<br/>
   <table class="table table-hover" style="width: 640px;">
   {% for ip in iplist %}
   <tr><td width="10px"><input type="checkbox" name="abuseid{{ loop.index }}" value="{{ loop.index }}" checked="checked"></td><td width="100px">{{ ip.ip }}</td><td width="500px"><a href="http://bgp.he.net/AS{{ ip.asn }}" target="_blank">AS{{ ip.asn }}</a>&nbsp;{{ ip.asnName }}&nbsp;({{ ip.asnCountryCode }})<br/><input type="text" name="abuseemail{{ loop.index }}" value="{{ ip.email }}" style="width: 450px;"></td></tr>
+  {% endfor %}
+  </table>
+  <table class="table table-hover" style="width: 640px;">
+  {% for url in urls %}
+  <tr><td width="10px"><input type="checkbox" name="urlid{{ loop.index }}" value="{{ loop.index }}" checked="checked"></td><td >{{ url }}</td></tr>
   {% endfor %}
   </table>
   <p><input type="submit" name="submit" value="Send ARF"></p>

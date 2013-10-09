@@ -20,6 +20,7 @@ import imaplib, email, json, time, subprocess, os, re, urlparse, dns.resolver, d
 import sys
 import hashlib
 import calendar
+import math
 from datetime import date, datetime, timedelta
 from dateutil.parser import parse
 import MySQLdb
@@ -41,6 +42,8 @@ dbPassword=config.get('db','dbPassword')
 imapHost=config.get('mailbox','imapHost')
 imapUser=config.get('mailbox','imapUser')
 imapPassword=config.get('mailbox','imapPassword')
+
+wldomain=config.get('dnsbl','wldomain').split(",")
 
 networks = {}
 
@@ -153,25 +156,16 @@ def getUrl(db,emailId,arrivalDate,listurl):
 			except:
 				urlId = 0
 		if not found:
+			urlId=0
 			try:
+				cur = db.cursor()
 				strSql1 = "insert into url (firstSeen,lastSeen,urlIp,urlDomainId,urlAsn,url) values('%s','%s',INET_ATON('%s'),%s,%s,'%s')" % (arrivalDate,arrivalDate,ip,urlDomainId,urlAsn,url)
-				db.query(strSql1)
+				cur.execute(strSql1)
+				urlId=cur.lastrowid
 				db.commit()
+				cur.close()
 			except:
 				pass
-			strSql = "select urlId from url where url='"+url+"';"
-			db.query(strSql)
-			result = db.store_result()
-			if result is not None:
-				try:
-					row = result.fetch_row(1,1)[0]
-					urlId = row['urlId']
-				except:
-					print strSql1
-					print strSql
-					urlId = 0
-			else:
-				urlId = 0
 		try:
 			strSql = "update url set lastSeen='%s' where urlId=%s" % (arrivalDate,urlId)
 			db.query(strSql)
@@ -248,7 +242,7 @@ lioldday=0
 lidate=time.gmtime()
 
 today = date.today()
-yesterday = today - timedelta(days=2)
+yesterday = today - timedelta(days=3)
 sentsince = '(SENTSINCE %s NOT SEEN)' % yesterday.strftime('%d-%b-%Y')
 
 print sentsince
@@ -404,14 +398,19 @@ for num in id_list:
 	listurl=[]
 	for url in urls:
 		o = urlparse.urlparse(url[0])
-		try:
-			reportanswers = dns.resolver.query(o.hostname, 'A')
-			ip = reportanswers[0].to_text()
-			#except dns.exception.DNSException as e:
-		except Exception, err:
-			ip = ""
-			print '  A error: %s' % str(err)
-		listurl = listurl +[(ip,o.hostname,url[0])]
+		urlReport=True
+		for domain in wldomain:
+                    if o.hostname is not None and o.hostname[-len(domain):]==domain:
+                        urlReport=False
+                if urlReport==True:
+			try:
+				reportanswers = dns.resolver.query(o.hostname, 'A')
+				ip = reportanswers[0].to_text()
+				#except dns.exception.DNSException as e:
+			except Exception, err:
+				ip = ""
+				print '  A error: %s' % str(err)
+			listurl = listurl +[(ip,o.hostname,url[0])]
 
 	#storing results in db
 	reportedDomainId = getDomainId(db,limsg ['Reported-Domain'])
@@ -499,6 +498,7 @@ for num in id_list:
 		db.commit()
 		cur.close()
 		print emailId,
+		print str(len(listurl)),
 		getUrl(db,emailId,arrivalDate,listurl)
 		print "1 ",
 		getFile(db,emailId,arrivalDate,md5)
@@ -509,6 +509,8 @@ for num in id_list:
 	except:
 		print "error, cannot store info in db\n"
 	print "-------******************"
+	if math.fmod(float(num),4000) == 0 :
+		break
 print "Expunging now"
 imap.expunge()
 imap.logout()

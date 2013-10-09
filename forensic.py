@@ -27,11 +27,16 @@ import dns.resolver
 import re
 import socket,struct
 import unicodedata
+import signal
+import urlparse
+import tempfile
+import subprocess
 
 from ConfigParser import SafeConfigParser
 
 import smtplib
 import email
+from email import encoders
 from email.message import Message
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -58,12 +63,17 @@ dbPassword=config.get('db','dbPassword')
 
 reportEmailCc=config.get('reports','email')
 reportEmailSpamCc=config.get('reports','emailSpam')
+arfPassword=config.get('reports','arfPassword')
 
 zen=config.get('dnsbl','zen')
+wldomain=config.get('dnsbl','wldomain').split(",")
 
 # end of local config
 
 privatenet = ["127.0.0.0/8","192.168.0.0/16","172.16.0.0/12","10.0.0.0/8"]
+
+def handleTimeOut(signum, frame0):
+   raise TimeoutError("taking too long")
 
 def addressInNetworkList(ip,netlist):
     for net in netlist:
@@ -175,7 +185,8 @@ def sendArf(item, spam=False):
         text = text+"This report indicates that the attached email was not wanted by the recipient.\r\n"
         text = text+"This report may indicates a compromised machine and may contain URLs to malware, treat with caution!\r\n\r\n"
         text = text+"This ARF report contains all the information you will need to assess the problem.\r\n"
-        text = text+"For more information about this format please see http://tools.ietf.org/html/rfc6591.\r\n";
+        text = text+"The zip attachment is the complete email encrypted with the password "+str(arfPassword)+"\r\n";
+        text = text+"For more information about this format please see http://tools.ietf.org/html/rfc5965.\r\n";
     else:
         text = "This is an email in the abuse report format (ARF) for an email message received from \r\n"
         text = text+"IP "+str(item['sourceIp'])+" "+str(item['sourceDomain'])+" on "+str(item['arrivalDate'])+" UTC.\r\n"
@@ -185,7 +196,8 @@ def sendArf(item, spam=False):
         text = text+"indicating fraud and not spam. The faster you fix or isolate the compromised machine, \r\n"
         text = text+"the better you protect your customers or members and the Internet at large.\r\n\r\n"
         text = text+"This ARF report contains all the information you will need to assess the problem.\r\n"
-        text = text+"For more information about this format please see http://tools.ietf.org/html/rfc6591.\r\n";
+        text = text+"The zip attachment is the complete email encrypted with the password "+str(arfPassword)+"\r\n";
+        text = text+"For more information about this format please see http://tools.ietf.org/html/rfc5965.\r\n";
 
     msgtxt = MIMEText(text)
     msg.attach(msgtxt)
@@ -197,20 +209,77 @@ def sendArf(item, spam=False):
         text = "Feedback-Type: abuse\r\n"
     else:
         text = "Feedback-Type: fraud\r\n"
-    text = text + "User-Agent: pyforensic/1.0\r\n"
+    text = text + "User-Agent: pyforensic/1.1\r\n"
     text = text + "Version: 1.0\r\n"
     if not spam:
         text = text + "Source-IP: "+str(item['sourceIp'])+"\r\n"
+    else:
+        ipList = item['sourceIp'].split(", ")
+        for ip in ipList:
+            text = text + "Source-IP: "+str(ip)+"\r\n"
+
     text = text + "Arrival-Date: "+str(item['arrivalDate'])+" UTC\r\n"
+
+    text = text + "Attachment-Password: "+str(arfPassword)+"\r\n"
+
+    if 'urlList' in item:
+        for uri in item['urlList']:
+            o = urlparse.urlparse(uri)
+            urlReport=True
+            if o.hostname is not None:
+                for domain in wldomain:
+                    if o.hostname[-len(domain):]==domain:
+                        urlReport=False
+                if urlReport==True:
+                    text = text + "Reported-Uri: "+str(uri)+"\r\n"
 
     msgreport.set_payload(text)
     msg.attach(msgreport)
 
-    msgrfc822 = MIMEBase('message', "rfc822")
+    #msgrfc822 = MIMEBase('message', "rfc822")
+    msgrfc822 = MIMEBase('text', "rfc822-headers")
     msgrfc822.add_header('Content-Disposition','inline')
-    msgrfc822.set_payload(item['content'])
+    parts=re.split(r'\r\n\r\n|\n\n',item['content'])
+    rfc822headers=parts[0]
+    #msgrfc822.set_payload(item['content'])
+    msgrfc822.set_payload(rfc822headers)
     
     msg.attach(msgrfc822)
+
+    #prepare the zip encrypted
+    temp=tempfile.NamedTemporaryFile(prefix='mail',suffix='.eml',delete=False)
+    tempname=temp.name
+    temp.write(item['content'])
+    temp.flush()
+    ziptemp = tempfile.NamedTemporaryFile(prefix='mail',suffix='.zip',delete=True)
+    ziptempname=ziptemp.name
+    ziptemp.close()
+    workdir = os.path.dirname(ziptempname)
+    filenamezip = os.path.basename(ziptempname)
+    filenameemail = os.path.basename(tempname)
+    os.chdir(workdir)
+    option = '-P%s' % arfPassword
+    rc = subprocess.call(['zip', option] + [filenamezip, filenameemail])
+    temp.close()
+
+    
+    ziptemp = open(ziptempname,"r")
+    msgzip = MIMEBase('application', "zip")
+    msgzip.set_payload(ziptemp.read())
+    encoders.encode_base64(msgzip)
+    msgzip.add_header('Content-Disposition', 'attachment', filename=filenamezip)
+    ziptemp.close()
+
+    msg.attach(msgzip)
+
+    #delete created files
+    os.remove(ziptempname)
+    os.remove(tempname)
+
+
+    #print "******************\r\n"
+    #print msg.as_string()
+    #print "******************\r\n"
 
     s = smtplib.SMTP(mailSmtp)
     # send to IP owners first
@@ -225,10 +294,11 @@ def sendArf(item, spam=False):
         toList = reportEmail.split(",")
         for emailAddress in toList:
             if msg.has_key("To"):
-               msg.replace_header("To",str(emailAddress))
+                msg.replace_header("To",str(emailAddress))
             else:
-               msg["To"]=str(emailAddress)
-            s.sendmail(msg["From"], emailAddress, msg.as_string())
+                msg["To"]=str(emailAddress)
+                s.sendmail(msg["From"], emailAddress, msg.as_string())
+            
     s.quit()
 
 
@@ -609,9 +679,17 @@ def reportEmail():
     strSql = 'select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(e.sourceIp) as sourceIp, sourceAsn, f.domain as sourceDomain, deliveryResult, subject, content from arfEmail e, domain d, domain f where e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and emailId in (%s)' % strEmailList
     cur = g.db.cursor()
     cur.execute(strSql)
-    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceIp=row[4], sourceAsn=row[5], sourceDomain=row[6], deliveryResult=row[7], subject=row[8], content=row[9], emailAbuse="") for row in cur.fetchall()]
+    entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceIp=row[4], sourceAsn=row[5], sourceDomain=row[6], deliveryResult=row[7], subject=row[8], content=row[9], emailAbuse="", urlList="") for row in cur.fetchall()]
     cur.close()
     for item in entries:
+        #add the list of urls
+        strSql='select distinct c.url as url from arfEmail a, emailUrl b, url c where a.emailId=b.emailId and b.urlId = c.urlId and a.emailId=%s' % item['emailId']
+        cur = g.db.cursor()
+        cur.execute(strSql)
+        urlList = [row[0] for row in cur.fetchall()]
+        cur.close()
+        item['urlList'] = urlList
+
         #find where to report abuse
         item['emailAbuse']=getEmailAbuseFromIp(item['sourceIp'])
         abuseAsn=getEmailAbuseFromAsn(item['sourceAsn'])
@@ -638,15 +716,22 @@ def reportSpam():
     strEmail=""
     strSourceIpList=""
     ipList = []
+    urls = []
+    listUrl =[]
     abuseList = []
     abuseEmailList = {}
+    urlListId = []
+    subject = ""
     match_ip = re.compile(r'.*\[(((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)).*')
+    match_url = re.compile(r"""(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))""", re.DOTALL)
     title = "send ARF"
     for item in request.form:
         if item[:7]=="abuseid":
             abuseList.append(int(item[7:]))
         if item[:10]=="abuseemail":
             abuseEmailList[int(item[10:])]=request.form[item]
+        if item[:5]=="urlid":
+            urlListId.append(int(item[5:]))
         if item=="email":
             strEmail=request.form[item]
         if item=="submit" and request.form[item]=="Analyse email":
@@ -658,7 +743,26 @@ def reportSpam():
 
     if analyze or reporting:
         ipRawList=match_ip.findall(strEmail)
+        u_strEmail=strEmail.encode('ascii','replace')
+        msg = email.message_from_string(u_strEmail) 
+        subject=msg.get('Subject')
+        arrivalDate=msg.get('Date')
 
+        for part in msg.walk():
+            ctype = part.get_content_type()
+            if part.get_content_maintype() == 'text':
+                orgmsgpart = part.get_payload(decode=True)
+
+                #signal.signal(signal.SIGALRM, handleTimeOut)
+                #signal.alarm(30)
+                try:
+                    urls= urls + match_url.findall(orgmsgpart)
+                except Exception, err:
+                    print ' A error: %s with %s' % (str(err),orgmsgpart)
+                    #signal.alarm(0)
+
+        for url in urls:
+            listUrl.append(url[0])
         ipUniqueList = []
         for ip in ipRawList:
             if ip[0] not in ipUniqueList:
@@ -677,12 +781,15 @@ def reportSpam():
     if reporting:
         emailList=[]
         sourceIpList=[]
+        urlList =[]
         for id in abuseList:
             emailEntryList=abuseEmailList[id].split(",")
             for emailAddress in emailEntryList:
                 emailList.append(emailAddress)
             sourceIpList.append(ipList[id-1]["ip"])
         emailUniqueList = []
+        for id in urlListId:
+            urlList.append(listUrl[id-1])
         for emailAddress in emailList:
             if emailAddress not in emailUniqueList:
                 emailUniqueList.append(emailAddress) 
@@ -693,16 +800,11 @@ def reportSpam():
         strEmailList = ", ".join(emailUniqueList)
         strSourceIpList = ", ".join(sourceIpUniqueList)
 
-        u_strEmail=strEmail.encode('ascii','replace')
-        msg=email.message_from_string(u_strEmail)
-        subject=msg.get('Subject')
-        arrivalDate=msg.get('Date')
-
-        item = dict(sourceIp=strSourceIpList, arrivalDate=arrivalDate, subject=subject, content=u_strEmail, emailAbuse=strEmailList)
+        item = dict(sourceIp=strSourceIpList, arrivalDate=arrivalDate, subject=subject, content=u_strEmail, emailAbuse=strEmailList, urlList=urlList)
         sendArf(item=item,spam=True)
 
         flash("this email has been reported to the abuse handle of each IP")
-    return render_template('arf.html', iplist=ipList, email=strEmail, analyze=analyze, reporting=reporting, title=title)
+    return render_template('arf.html', iplist=ipList, urls=listUrl, subject=subject, email=strEmail, analyze=analyze, reporting=reporting, title=title)
 
 if __name__ == '__main__':
     title = "Lafayette"
