@@ -297,7 +297,7 @@ def sendArf(item, spam=False):
                 msg.replace_header("To",str(emailAddress))
             else:
                 msg["To"]=str(emailAddress)
-                s.sendmail(msg["From"], emailAddress, msg.as_string())
+            s.sendmail(msg["From"], emailAddress, msg.as_string())
             
     s.quit()
 
