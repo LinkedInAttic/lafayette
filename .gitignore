@@ -1,1 +1,3 @@
 forensic.cfg
+*.py[co]
+forensic-mysql.pid
