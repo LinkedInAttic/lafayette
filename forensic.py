@@ -31,6 +31,7 @@ import signal
 import urlparse
 import tempfile
 import subprocess
+import sys
 
 from ConfigParser import SafeConfigParser
 
@@ -64,6 +65,14 @@ dbPassword=config.get('db','dbPassword')
 reportEmailCc=config.get('reports','email')
 reportEmailSpamCc=config.get('reports','emailSpam')
 arfPassword=config.get('reports','arfPassword')
+
+listen_addr = config.get('web', 'host')
+
+try:
+	listen_port = int(config.get('web', 'port'))
+except ValueError:
+	print "port must be an integer"
+	sys.exit(1)
 
 zen=config.get('dnsbl','zen')
 wldomain=config.get('dnsbl','wldomain').split(",")
@@ -808,4 +817,4 @@ def reportSpam():
 
 if __name__ == '__main__':
     title = "Lafayette"
-    app.run(host='0.0.0.0',debug=True)
+    app.run(host=listen_addr, port=listen_port, debug=True)
