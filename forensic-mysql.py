@@ -292,7 +292,6 @@ for num in id_list:
 	for part in msg.walk():
 		if part.get_content_type() == 'message/feedback-report':
 			feedbackreport = part.get_payload()
-			pprint.pprint(feedbackreport)
 			feedbackreportitems = feedbackreport[0].items()
 		elif part.get_content_type() == 'message/rfc822' and not rfc822Found:
 			msg2 = part.get_payload()
@@ -395,13 +394,13 @@ for num in id_list:
 		if orgpart.get_content_maintype() == 'text':
 			orgmsgpart = orgpart.get_payload(decode=True)
 
-						signal.signal(signal.SIGALRM, handleTimeOut)
-						signal.alarm(30)
-						try:
-			  urls = urls + match_urls.findall(orgmsgpart)
-						except Exception, err:
-						  print ' A error: %s with %s' % (str(err),orgmsgpart)
-						signal.alarm(0)
+			signal.signal(signal.SIGALRM, handleTimeOut)
+			signal.alarm(30)
+			try:
+				urls = urls + match_urls.findall(orgmsgpart)
+			except Exception, err:
+				print ' A error: %s with %s' % (str(err),orgmsgpart)
+				signal.alarm(0)
 		else:
 			if ctype == 'message/delivery-status':
 				bounce = True
@@ -419,9 +418,9 @@ for num in id_list:
 		o = urlparse.urlparse(url[0])
 		urlReport=True
 		for domain in wldomain:
-					if o.hostname is not None and o.hostname[-len(domain):]==domain:
-						urlReport=False
-				if urlReport==True:
+			if o.hostname is not None and o.hostname[-len(domain):]==domain:
+				urlReport=False
+		if urlReport==True:
 			try:
 				reportanswers = dns.resolver.query(o.hostname, 'A')
 				ip = reportanswers[0].to_text()
