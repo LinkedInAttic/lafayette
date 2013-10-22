@@ -24,3 +24,12 @@ Detecting fraudulent emails is a combination of an automatic process, and a manu
 Lafayette collects, identifies and reports fraudulent emails, so the zombies get fixed and removed from the botnet they belong to, at the same time the URLs are added in blocking lists that browsers use.
 
 For ease of use, a graph of the last few days report indicates visually when there is a potential fraudulent activity going on and a world heat map of reported emails give an indication from which networks fraudulent activity is coming from.
+
+Dependencies
+============
+
+* dnspython
+* flask
+* dateutil
+* MySQL-python
+* mysql
