@@ -8,6 +8,8 @@ dbPassword = password
 secret_key = secret
 reportSender = postmaster@example.com
 mailSmtp = mail.example.com
+host = 0.0.0.0
+port = 5000
 
 [dnsbl]
 zen = zen.spamhaus.org
@@ -17,6 +19,7 @@ wldomain = example.com,example.net
 imapHost = localhost
 imapUser = failures
 imapPassword = password
+imapPort = 993
 
 [reports]
 email = feed@example.net
