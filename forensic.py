@@ -31,6 +31,7 @@ import signal
 import urlparse
 import tempfile
 import subprocess
+import threading
 
 from ConfigParser import SafeConfigParser
 
@@ -45,6 +46,7 @@ from email.mime.base import MIMEBase
 from forensic_auth import is_authorized
 
 app = Flask(__name__)
+app.config['PROPAGATE_EXCEPTIONS'] = True
 
 # Local config
 #
@@ -91,8 +93,10 @@ def addressInNetwork(ip, net):
 def getIp4ToAsn(ip):
     asn = 0
     try:
-        (ip1,ip2,ip3,ip4) = ip.split(".")
-        query = "%s.%s.%s.%s.origin.asn.cymru.com" % (ip4,ip3,ip2,ip1)
+       # (ip1,ip2,ip3,ip4) = ip.split(".")
+       # query = "%s.%s.%s.%s.origin.asn.cymru.com" % (ip4,ip3,ip2,ip1)
+        addr = dns.reversename.from_address(ip).to_text()
+        query = addr.replace("in-addr.arpa.","origin.asn.cymru.com").replace("ip6.arpa.","origin6.asn.cymru.com")
         reportanswers = dns.resolver.query(query, 'TXT')
         res = reportanswers[0].to_text()
         asn = long(res.split("|")[0][1:])
@@ -131,8 +135,10 @@ def getEmailAbuseFromAsn(asn):
 def getEmailAbuseFromIp(ip):
     res=""
     try:
-        (ip1,ip2,ip3,ip4) = ip.split(".")
-        query = "%s.%s.%s.%s.abuse-contacts.abusix.org" % (ip4,ip3,ip2,ip1)
+       #(ip1,ip2,ip3,ip4) = ip.split(".")
+       #query = "%s.%s.%s.%s.abuse-contacts.abusix.org" % (ip4,ip3,ip2,ip1)
+        addr = dns.reversename.from_address(ip).to_text()
+        query = addr.replace("in-addr.arpa.","abuse-contacts.abusix.org").replace("ip6.arpa.","abuse-contacts.abusix.org")
         reportanswers = dns.resolver.query(query, 'TXT')
         res = reportanswers[0].to_text()
         res = res[1:-1]
@@ -165,6 +171,40 @@ def addDnsbl(entries):
         entry.update(dnsbl=zen)
     return entries
 
+def reportItem(item,reporting):
+    with app.test_request_context():
+        #add the list of urls
+        strSql='select distinct c.url as url from arfEmail a, emailUrl b, url c where a.emailId=b.emailId and b.urlId = c.urlId and a.emailId=%s' % item['emailId']
+        db = get_db()
+        cur = db.cursor()
+        cur.execute(strSql)
+        urlList = [row[0] for row in cur.fetchall()]
+        cur.close()
+        item['urlList'] = urlList
+
+        #find where to e.eport abuse
+        item['emailAbuse']=getEmailAbuseFromIp(item['sourceIp'])
+
+        strSql='select email from asn where asn=%s' % str(item['sourceAsn'])
+	db.query(strSql)
+	result = db.store_result()
+	if result is not None:
+	    try:
+	        row = result.fetch_row(1,1)[0]
+	        abuseAsn = row['email']
+	    except:
+	        abuseAsn = ""
+
+        if abuseAsn!="" and item['emailAbuse'].find(abuseAsn)<0:
+            item['emailAbuse']=item['emailAbuse']+','+abuseAsn
+
+        if reporting:
+            sendArf(item=item,spam=False)
+            strSql = 'update arfEmail set reported=1 where emailId=%s' % item['emailId']
+            cur = db.cursor()
+            cur.execute(strSql)
+            cur.close()
+            item['reported'] = 1
 
 def sendArf(item, spam=False):
     global reportSender
@@ -301,6 +341,10 @@ def sendArf(item, spam=False):
             
     s.quit()
 
+def get_db():
+    db=MySQLdb.connect(host=dbHost,user=dbUser,passwd=dbPassword,db=dbName,charset = "utf8",use_unicode = True)
+    db.autocommit(True)
+    return db
 
 @app.before_request
 def before_request():
@@ -310,7 +354,10 @@ def before_request():
 
 @app.teardown_request
 def teardown_request(exception):
-    g.db.close()
+    db = getattr(g, 'db', None)
+    if db is not None:
+        db.close()
+    #g.db.close()
 
 @app.route('/')
 def home():
@@ -665,6 +712,7 @@ def emailMap(days=7,daysago=0):
 @app.route('/reportemail',methods=['GET','POST'])
 def reportEmail():
     emailList = []
+    thread_list = []
     nbEmailReported=0
     reporting=False
     title = "Reporting emails"
@@ -682,28 +730,16 @@ def reportEmail():
     entries = [dict(emailId=row[0], reported=row[1], arrivalDate=row[2], reportedDomain=row[3], sourceIp=row[4], sourceAsn=row[5], sourceDomain=row[6], deliveryResult=row[7], subject=row[8], content=row[9], emailAbuse="", urlList="") for row in cur.fetchall()]
     cur.close()
     for item in entries:
-        #add the list of urls
-        strSql='select distinct c.url as url from arfEmail a, emailUrl b, url c where a.emailId=b.emailId and b.urlId = c.urlId and a.emailId=%s' % item['emailId']
-        cur = g.db.cursor()
-        cur.execute(strSql)
-        urlList = [row[0] for row in cur.fetchall()]
-        cur.close()
-        item['urlList'] = urlList
-
-        #find where to report abuse
-        item['emailAbuse']=getEmailAbuseFromIp(item['sourceIp'])
-        abuseAsn=getEmailAbuseFromAsn(item['sourceAsn'])
-        if abuseAsn!="" and item['emailAbuse'].find(abuseAsn)<0:
-            item['emailAbuse']=item['emailAbuse']+','+abuseAsn
-            
+        t=threading.Thread(target=reportItem, args=(item,reporting,))
+        thread_list.append(t)
         if reporting:
-            sendArf(item=item,spam=False)
-            strSql = 'update arfEmail set reported=1 where emailId=%s' % item['emailId']
-            cur = g.db.cursor()
-            cur.execute(strSql)
-            cur.close()
-            item['reported'] = 1
             nbEmailReported = nbEmailReported+1
+    # Starts threads
+    for thread in thread_list:
+        thread.start()
+    # This blocks the calling thread until the thread whose join() method is called is terminated.
+    for thread in thread_list:
+       thread.join()
     if reporting:
         flash(str(nbEmailReported)+" emails have been reported to the abuse handle of each IP")
     return render_template('report_email.html', entries=entries, title=title)
@@ -722,7 +758,9 @@ def reportSpam():
     abuseEmailList = {}
     urlListId = []
     subject = ""
-    match_ip = re.compile(r'.*\[(((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)).*')
+  #  match_ip = re.compile(r'.*\[(((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)).*')
+    match_ip = re.compile(r'.*\[((\d{1,3}\.){3}\d{1,3}|([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4}).*')
+  #  match_url = re.compile(r"""(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))""", re.DOTALL)
     match_url = re.compile(r"""(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))""", re.DOTALL)
     title = "send ARF"
     for item in request.form:
@@ -761,22 +799,40 @@ def reportSpam():
                     print ' A error: %s with %s' % (str(err),orgmsgpart)
                     #signal.alarm(0)
 
+        urls = list(set(urls))
         for url in urls:
-            listUrl.append(url[0])
+            o = urlparse.urlparse(url[0])
+            urlReport=True
+            if re.search('\.(jpg|png|gif)$', url[0]):
+                urlReport=False
+            if o.hostname is not None:
+                for domain in wldomain:
+                   if o.hostname[-len(domain):]==domain:
+                       urlReport=False
+                if urlReport==True:
+                    listUrl.append(url[0])
+
         ipUniqueList = []
         for ip in ipRawList:
             if ip[0] not in ipUniqueList:
                 ipUniqueList.append(ip[0])
 
         for ip in ipUniqueList:
-            if not addressInNetworkList(ip,privatenet):
-                abuseEmail=getEmailAbuseFromIp(ip)
-                asn=getIp4ToAsn(ip)
-                abuseAsn=getEmailAbuseFromAsn(asn)
-                (resAsn,countryCode,rir,createDate,asnName)=getAsnInfo(asn)
-                if abuseAsn!="":
-                    abuseEmail=abuseEmail+","+abuseAsn
-                ipList.append(dict(ip=ip,email=abuseEmail,asn=asn,asnName=asnName,asnCountryCode=countryCode))
+            processIP=False
+            if re.search('(\d{1,3}\.){3}\d{1,3}', ip):
+                if not addressInNetworkList(ip,privatenet):
+                    processIP=True
+            else:
+                processIP=True
+
+            if processIP:
+               abuseEmail=getEmailAbuseFromIp(ip)
+               asn=getIp4ToAsn(ip)
+               abuseAsn=getEmailAbuseFromAsn(asn)
+               (resAsn,countryCode,rir,createDate,asnName)=getAsnInfo(asn)
+               if abuseAsn!="":
+                  abuseEmail=abuseEmail+","+abuseAsn
+               ipList.append(dict(ip=ip,email=abuseEmail,asn=asn,asnName=asnName,asnCountryCode=countryCode))
 
     if reporting:
         emailList=[]
