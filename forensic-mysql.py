@@ -25,6 +25,8 @@ from datetime import date, datetime, timedelta
 from dateutil.parser import parse
 import MySQLdb
 import signal,os
+import os
+import os.path
 
 from ConfigParser import SafeConfigParser
 
@@ -47,8 +49,37 @@ imapPort = config.get('mailbox', 'imapPort')
 wldomain=config.get('dnsbl','wldomain').split(",")
 
 networks = {}
+pidfile = "forensic-mysql.pid"
 
 # end of local config
+
+def exitHard(exit_status):
+	os.unlink(pidfile)
+	sys.exit(exit_status)
+
+def writePid():
+	pid = os.getpid()
+
+	if os.path.isfile(pidfile):
+		old_pid = None
+		with open(pidfile, "r") as f:
+			old_pid = f.read().strip()
+		try:
+			os.kill(int(old_pid), 0)
+		except OSError:
+			print "{0} is no longer running or not owned by us".format(old_pid)
+			os.unlink(pidfile)
+		except ValueError:
+			print "{0} is not a valid pid".format(old_pid)
+			os.unlink(pidfile)
+		else:
+			print "{0} is still running".format(os.path.basename(__file__))
+			sys.exit(1)
+
+	with open(pidfile, "w") as f:
+		f.write(str(pid))
+
+match_urls = re.compile(r"""(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))""", re.DOTALL)
 
 def handleTimeOut(signum, frame0):
    raise TimeoutError("taking too long")
@@ -232,22 +263,7 @@ def getFile(db,emailId,arrivalDate,md5):
 		except:
 			pass	
 
-pid = str(os.getpid())
-pidfile = "forensic-mysql.pid"
-
-if os.path.isfile(pidfile):
-	old_pid = file(pidfile, 'r').read()
-	if os.path.exists("/proc/%s" % old_pid):
-		print "%s already exists, exiting" % pidfile
-		sys.exit()
-	else:
-		print "%s is there but process not running, removing it" % pidfile
-		os.unlink(pidfile)
-	
-file(pidfile, 'w').write(pid)
-
-match_urls = re.compile(r"""(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))""", re.DOTALL)
-
+writePid()
 match_emails = re.compile(r'\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,4}\b',re.IGNORECASE)
 
 liyear=0
@@ -270,11 +286,22 @@ topsendingip={}
 topurlip={}
 topurl={}
 
-db=MySQLdb.connect(host=dbHost,user=dbUser,passwd=dbPassword,db=dbName)
-db.autocommit(True)
+try:
+	db=MySQLdb.connect(host=dbHost,user=dbUser,passwd=dbPassword,db=dbName)
+	db.autocommit(True)
+except Exception as e:
+	print "Could not connect to the database"
+	print e
+	exitHard(1)
 
-imap = imaplib.IMAP4_SSL(imapHost, port=imapPort)
-imap.login(imapUser, imapPassword)
+try:
+	imap = imaplib.IMAP4_SSL(imapHost, port=imapPort)
+	imap.login(imapUser, imapPassword)
+except Exception as e:
+	print "Couldn't log in to {0} via IMAP on port {1}".format(imapHost, imapPort)
+	print e
+	exitHard(1)
+
 r, data = imap.select('INBOX')
 r, data = imap.search(None, sentsince)
 #r, data = imap.search(None,'ALL')
