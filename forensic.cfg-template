@@ -14,6 +14,8 @@ port = 5000
 [dnsbl]
 zen = zen.spamhaus.org
 wldomain = example.com,example.net
+dbl = dbl.spamhaus.org
+surbl = multi.surbl.org
 
 [mailbox]
 imapHost = localhost

@@ -1,6 +1,24 @@
 CHANGELOG
 =========
 
+2014/01/02 - Franck Martin
+  -added /tools to analyze URLs
+  -now read ARF in 'text/rfc822-headers'
+  -sql escape fixes
+
+2013/12/13 - Abhishek Amarnath Ubale
+  -improve lafayette to handle IPv6 headers
+
+2013/10/29 - Abhishek Amarnath Ubale
+  -multi-threading to send emails
+
+2013/10/18 - William Orr
+  -cron startup more robust
+  -more config options for web and imap
+  -sql query are safer
+  -added list of dependencies
+  -administrivia cleanup
+
 2013/06/27 - Franck Martin
   -added /reportspam to report a spamy email using ARF
 

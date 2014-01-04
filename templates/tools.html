@@ -1,0 +1,16 @@
+{% extends "layout.html" %}
+{% block body %}
+<form action="{{ url_for('tools') }}" method="post" name="tools">
+  URL: <textarea name="url" rows=1 style="width: 640px;" >{{ url }}</textarea><br/>
+  <p><input type="submit" name="submit" value="Analyse URL"></p>
+</form>
+  {% if analyze %}
+  <table class="table table-hover" style="width: 100%;">
+  {% for res in resurl %}
+  <tr><td >{{ res.0 }}</td><td style="width: 150px;">{{ res.1 }}</td><td style="width: 200px;">{{ res.2 }}</td><td style="width: 200px;">{{ res.3 }}</td></tr>
+  {% endfor %}
+  </table>
+  {% endif %}
+
+
+{% endblock %}

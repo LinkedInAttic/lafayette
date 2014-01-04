@@ -84,14 +84,6 @@ match_urls = re.compile(r"""(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-
 def handleTimeOut(signum, frame0):
    raise TimeoutError("taking too long")
 
-def addressInNetwork(ip, net):
-   import socket,struct
-   ipaddr = int(''.join([ '%02x' % int(x) for x in ip.split('.') ]), 16)
-   netstr, bits = net.split('/')
-   netaddr = int(''.join([ '%02x' % int(x) for x in netstr.split('.') ]), 16)
-   mask = (0xffffffff << (32 - int(bits))) & 0xffffffff
-   return (ipaddr & mask) == (netaddr & mask)
-
 def domainIsSubDomain(subdomain):
 	isSubDomain = False
 	for domain in domains:
@@ -195,8 +187,8 @@ def getUrl(db,emailId,arrivalDate,listurl):
 						db.escape_string(arrivalDate),
 						db.escape_string(arrivalDate),
 						db.escape_string(ip),
-						db.escape_string(urlDomainId),
-						db.escape_string(urlAsn),
+						db.escape_string(str(urlDomainId)),
+						db.escape_string(str(urlAsn)),
 						db.escape_string(url))
 				cur.execute(strSql1)
 				urlId=cur.lastrowid
@@ -207,7 +199,7 @@ def getUrl(db,emailId,arrivalDate,listurl):
 		try:
 			strSql = "update url set lastSeen='{0}' where urlId={1}".format(
 				db.escape_string(arrivalDate),
-				db.escape_string(urlId))
+				db.escape_string(str(urlId)))
 			db.query(strSql)
 			db.commit()
 		except:
@@ -215,8 +207,8 @@ def getUrl(db,emailId,arrivalDate,listurl):
 			pass
 		try:
 			strSql = "insert into emailUrl (emailId,urlId) values({0}, {1})".format(
-				db.escape_string(emailId),
-				db.escape_string(urlId))
+				db.escape_string(str(emailId)),
+				db.escape_string(str(urlId)))
 			db.query(strSql)
 			db.commit()
 		except:
@@ -248,7 +240,7 @@ def getFile(db,emailId,arrivalDate,md5):
 		try:
 			strSql = "update file set lastSeen='{0}' where urlId={1}".format(
 					db.escape_string(arrivalDate),
-					db.escape_string(fileId))
+					db.escape_string(str(fileId)))
 			db.query(strSql)
 			db.commit()
 		except:
@@ -256,8 +248,8 @@ def getFile(db,emailId,arrivalDate,md5):
 			pass
 		try:
 			strSql = "insert into emailFile (emailId,fileId) values({0}, {1})".format(
-				db.escape_string(emailId),
-				db.escape_string(fileId))
+				db.escape_string(str(emailId)),
+				db.escape_string(str(fileId)))
 			db.query(strSql)
 			db.commit()
 		except:
@@ -321,12 +313,22 @@ for num in id_list:
 		if part.get_content_type() == 'message/feedback-report':
 			feedbackreport = part.get_payload()
 			feedbackreportitems = feedbackreport[0].items()
-		elif part.get_content_type() == 'message/rfc822' and not rfc822Found:
+		elif (part.get_content_type() == 'message/rfc822' or part.get_content_type() == 'text/rfc822-headers') and not rfc822Found:
 			msg2 = part.get_payload()
-			orgmsg = msg2[0].as_string()
-			lisubject = msg2[0].get('Subject')
-			lifrom = msg2[0].get('From')
-			liautosubmitted = msg2[0].get('Auto-submitted')
+
+			if part.get_content_type() == 'text/rfc822-headers':
+				orgmsg = msg2
+				u_strEmail = msg2.encode('ascii','replace')
+				msg2 = email.message_from_string(u_strEmail)
+				lisubject = msg2.get('Subject')
+				lifrom = msg2.get('From')
+				liautosubmitted = msg2.get('Auto-submitted')
+			else:
+				orgmsg = msg2[0].as_string()
+				lisubject = msg2[0].get('Subject')
+				lifrom = msg2[0].get('From')
+				liautosubmitted = msg2[0].get('Auto-submitted')
+			
 			rfc822Found = True
 			
 	limsg = {}
@@ -354,7 +356,6 @@ for num in id_list:
 
 	limsg ['feedbackType'] = ""
 	limsg ['sourceIP'] = ""
-	limsg ['inNetwork'] = False
 	limsg ['mailFrom'] = ""
 	if lifrom is not None:
 		u_from = unicode(lifrom,errors='replace')
@@ -367,17 +368,12 @@ for num in id_list:
 	limsg ['messageId'] = ""
 	u_orgmsg = unicode(orgmsg,errors='replace')
 	limsg ['msg'] = u_orgmsg.encode("ascii",'xmlcharrefreplace')
-
-	isInNetwork = False	
+	
 	for item in feedbackreportitems:
 		if item[0] == 'Source-IP':
 			ip = str(item[1])
 			limsg ['sourceIP'] = unicode(ip,errors='replace')
-			for network in networks:
-				if addressInNetwork(ip,network):
-#					print 'found!'
-					isInNetwork = True
-					break;
+	
 		if item[0] == 'Arrival-Date':
 			try:
 				lidate = parse(unicode(item[1],errors='replace').encode("ascii",'replace'))
@@ -401,8 +397,6 @@ for num in id_list:
 			limsg ['messageId'] = unicode(item[1],errors='replace')
 		if item[0] == 'Authentication-Results':
 			limsg ['Authentication-Results'] = unicode(item[1],errors='replace')
-
-	limsg ['inNetwork'] = isInNetwork
 	
 	if limsg ['mailFrom']=="":
 		bounce=True
@@ -528,21 +522,21 @@ for num in id_list:
 			strSql = strSql + "'auto-replied'," 
 		else:
 			strSql = strSql + "'normal',"
-		strSql = strSql + "%s,%s," % (db.escape_string(originalMailFromLocalId),
-			db.escape_string(originalMailFromDomainId))
-		strSql = strSql + "%s,%s," % (db.escape_string(originalRcptToLocalId),
-			db.escape_string(originalRcptToLocalId))
+		strSql = strSql + "%s,%s," % (db.escape_string(str(originalMailFromLocalId)),
+			db.escape_string(str(originalMailFromDomainId)))
+		strSql = strSql + "%s,%s," % (str(db.escape_string(str(originalRcptToLocalId))),
+			db.escape_string(str(originalRcptToLocalId)))
 		strSql = strSql + "'%s','%s','%s',INET_ATON('%s'),%s," % (db.escape_string(arrivalDate),
 			db.escape_string(limsg['messageId']),
 			db.escape_string(limsg['Authentication-Results']),
 			db.escape_string(limsg['sourceIP']),
-			db.escape_string(sourceDomainId))
-		strSql = strSql + "%s,'%s'," % (db.escape_string(sourceAsn),
+			db.escape_string(str(sourceDomainId)))
+		strSql = strSql + "%s,'%s'," % (db.escape_string(str(sourceAsn)),
 			db.escape_string(countryCode))
 		strSql = strSql + "'%s'," % (db.escape_string(deliveryResult))
-		strSql = strSql + "%s," % (db.escape_string(reportedDomainId))
-		strSql = strSql + "%s,%s," % (db.escape_string(originalFromLocalId),
-			db.escape_string(originalFromDomainId))
+		strSql = strSql + "%s," % (db.escape_string(str(reportedDomainId)))
+		strSql = strSql + "%s,%s," % (db.escape_string(str(originalFromLocalId)),
+			db.escape_string(str(originalFromDomainId)))
 		strSql = strSql + "'%s','%s'" % (db.escape_string(limsg ['subject']),db.escape_string(limsg['msg']))
 		strSql = strSql + ")"
 		#print strSql
@@ -560,7 +554,7 @@ for num in id_list:
 		imap.store(num,'+FLAGS', '\\Seen')
 		imap.store(num,'+FLAGS', '\\Deleted')
 		print "3"
-	except:
+	except ValueError:
 		print "error, cannot store info in db\n"
 	print "-------******************"
 	if math.fmod(float(num),4000) == 0 :

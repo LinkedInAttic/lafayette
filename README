@@ -33,3 +33,4 @@ Dependencies
 * dateutil
 * MySQL-python
 * mysql
+* requests
