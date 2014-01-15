@@ -82,7 +82,7 @@ def writePid():
 match_urls = re.compile(r"""(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))""", re.DOTALL)
 
 def handleTimeOut(signum, frame0):
-   raise TimeoutError("taking too long")
+   raise RuntimeError("taking too long")
 
 def domainIsSubDomain(subdomain):
 	isSubDomain = False
@@ -93,23 +93,23 @@ def domainIsSubDomain(subdomain):
 	return isSubDomain
 
 def getIp4ToAsn(ip):
-	asn = 0
-	try:
-		(ip1,ip2,ip3,ip4) = ip.split(".")
-		query = "%s.%s.%s.%s.origin.asn.cymru.com" % (ip4,ip3,ip2,ip1)
-		reportanswers = dns.resolver.query(query, 'TXT')
-		res = reportanswers[0].to_text()
-		asn = long(res.split("|")[0][1:])
-	except:
-		pass
-	return asn
+    asn = 0
+    try:
+        addr = dns.reversename.from_address(ip).to_text()
+        query = addr.replace("in-addr.arpa.","origin.asn.cymru.com").replace("ip6.arpa.","origin6.asn.cymru.com")
+        reportanswers = dns.resolver.query(query, 'TXT')
+        res = reportanswers[0].to_text()
+        asn = long(res.split("|")[0][1:])
+    except:
+        pass
+    return asn
 
 def getIp4ToAsnCc(ip):
 	asn = 0
 	cc = "ZZ"
 	try:
-		(ip1,ip2,ip3,ip4) = ip.split(".")
-		query = "%s.%s.%s.%s.origin.asn.cymru.com" % (ip4,ip3,ip2,ip1)
+		addr = dns.reversename.from_address(ip).to_text()
+		query = addr.replace("in-addr.arpa.","origin.asn.cymru.com").replace("ip6.arpa.","origin6.asn.cymru.com")
 		reportanswers = dns.resolver.query(query, 'TXT')
 		res = reportanswers[0].to_text()
 		asn = long(res.split("|")[0][1:])
@@ -183,7 +183,7 @@ def getUrl(db,emailId,arrivalDate,listurl):
 			urlId=0
 			try:
 				cur = db.cursor()
-				strSql1 = "insert into url (firstSeen,lastSeen,urlIp,urlDomainId,urlAsn,url) values('{0}','{1}',INET_ATON('{2}'), {3}, {4},'{5}')".format(
+				strSql1 = "insert into url (firstSeen,lastSeen,urlIp,urlDomainId,urlAsn,url) values('{0}','{1}',INET6_ATON('{2}'), {3}, {4},'{5}')".format(
 						db.escape_string(arrivalDate),
 						db.escape_string(arrivalDate),
 						db.escape_string(ip),
@@ -526,7 +526,7 @@ for num in id_list:
 			db.escape_string(str(originalMailFromDomainId)))
 		strSql = strSql + "%s,%s," % (str(db.escape_string(str(originalRcptToLocalId))),
 			db.escape_string(str(originalRcptToLocalId)))
-		strSql = strSql + "'%s','%s','%s',INET_ATON('%s'),%s," % (db.escape_string(arrivalDate),
+		strSql = strSql + "'%s','%s','%s',INET6_ATON('%s'),%s," % (db.escape_string(arrivalDate),
 			db.escape_string(limsg['messageId']),
 			db.escape_string(limsg['Authentication-Results']),
 			db.escape_string(limsg['sourceIP']),

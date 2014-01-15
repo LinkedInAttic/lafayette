@@ -19,12 +19,11 @@
 from flask import Flask, request, session, g, redirect, url_for, \
      abort, render_template, flash, Response, request
 import MySQLdb
-import dns.resolver
+import dns.resolver, dns.reversename
 import os
 from pprint import pprint
 from datetime import date, datetime, timedelta
 import requests
-import dns.resolver
 import re
 import socket,struct
 import unicodedata
@@ -224,8 +223,8 @@ def getZen(ip):
         return ""
     res="N"
     try:
-        (ip1,ip2,ip3,ip4) = ip.split(".")
-        query = "%s.%s.%s.%s.%s" % (ip4,ip3,ip2,ip1,zen)
+        addr = dns.reversename.from_address(ip).to_text()
+        query = addr.replace("in-addr.arpa.",zen).replace("ip6.arpa.",zen)
         reportanswers = dns.resolver.query(query, 'A')
         res = reportanswers[0].to_text()
         if res != "127.0.0.1":
@@ -235,13 +234,20 @@ def getZen(ip):
         pass
     return res
 
-def addDnsbl(entries):
+def addDnsbl(entries,filterlisted=False):
+    if filterlisted is None:
+       filterlisted=False
+    newlist=[]
     if entries is None:
         return entries
     for entry in entries:
         zen=getZen(entry["sourceIp"])
         entry.update(dnsbl=zen)
-    return entries
+        if zen != "Z" and filterlisted:
+           pass
+        else:
+           newlist.append(entry)
+    return newlist
 
 def reportItem(item,reporting):
     with app.test_request_context():
@@ -467,7 +473,7 @@ def url(pattern="%",limit=50,days=0,daysago=0):
         strSqlLimit = 'limit {0}'.format(g.db.escape_string(str(limit)))
         titleLimit = 'limit {0}'.format(limit)
 
-    strSql='select urlId, firstSeen, lastSeen, INET_NTOA(urlIp) as Ip, urlAsn, url from url where {0} url like "{1}" order by lastSeen desc {2}'.format(
+    strSql='select urlId, firstSeen, lastSeen, INET6_NTOA(urlIp) as Ip, urlAsn, url from url where {0} url like "{1}" order by lastSeen desc {2}'.format(
 		strSqlDate,
 		g.db.escape_string(pattern),
 		strSqlLimit)
@@ -504,7 +510,7 @@ def urllistSubject(pattern="%",limit=50,days=0,daysago=0):
         strSqlLimit = 'limit {0}'.format(g.db.escape_string(str(limit)))
         titleLimit = 'limit {0}'.format(limit)
 
-    strSql='select distinct c.urlId as urlId, c.firstSeen, c.lastSeen, INET_NTOA(c.urlIp) as Ip, c.urlAsn as urlAsn, c.url as url from arfEmail a, emailUrl b, url c where {0} a.emailId=b.emailId and b.urlId = c.urlId and a.subject like "{1}" order by c.lastSeen desc {2}'.format(
+    strSql='select distinct c.urlId as urlId, c.firstSeen, c.lastSeen, INET6_NTOA(c.urlIp) as Ip, c.urlAsn as urlAsn, c.url as url from arfEmail a, emailUrl b, url c where {0} a.emailId=b.emailId and b.urlId = c.urlId and a.subject like "{1}" order by c.lastSeen desc {2}'.format(
         strSqlDate,
         g.db.escape_string(pattern),
         strSqlLimit)
@@ -522,9 +528,10 @@ def urllistSubject(pattern="%",limit=50,days=0,daysago=0):
 @app.route('/email/type/<emailType>/limit/<int:limit>')
 @app.route('/email/type/<emailType>/days/<int:days>')
 @app.route('/email/type/<emailType>/days/<int:days>/daysago/<int:daysago>')
+@app.route('/email/type/<emailType>/days/<int:days>/filterlisted/<int:filterlisted>')
 @app.route('/email/days/<int:days>')
 @app.route('/email/days/<int:days>/daysago/<int:daysago>')
-def displayMailList(emailType=None,limit=50,days=0,daysago=0):
+def displayMailList(emailType=None,limit=50,days=0,daysago=0,filterlisted=0):
     strSqlDate = ''
     strSqlLimit = ''
     titleDate = ''
@@ -548,12 +555,12 @@ def displayMailList(emailType=None,limit=50,days=0,daysago=0):
             strSqlEmailType='and emailType="{0}"'.format(g.db.escape_string(emailType))
         if emailType=="reported":
             strSqlEmailType='and reported!=0'   
-    strSql='select e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f where {0} e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId {1} order by emailId desc {2}'.format(strSqlDate, strSqlEmailType, strSqlLimit)
+    strSql='select e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET6_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f where {0} e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId {1} order by emailId desc {2}'.format(strSqlDate, strSqlEmailType, strSqlLimit)
     cur = g.db.cursor()
     cur.execute(strSql)
     entries = [{"emailId": row[0], "reported": row[1], "arrivalDate": row[2], "reportedDomain": row[3], "sourceIp": row[4], "sourceDomain": row[5], "dnsbl": "", "deliveryResult": row[6], "subject": row[7]} for row in cur.fetchall()]
     cur.close()
-    entries = addDnsbl(entries)
+    entries = addDnsbl(entries,filterlisted)
     title = "Email List%s%s" % (titleDate,titleLimit) 
     return render_template('mail_list.html', entries=entries, title=title)
 
@@ -590,7 +597,7 @@ def displayAsnList(asn=0,emailType=None,limit=50,days=0,daysago=0):
             strSqlEmailType='and emailType="{0}"'.format(g.db.escape_string(emailType))
         if emailType=="reported":
             strSqlEmailType='and reported!=0'
-    strSql='select e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f where {0} e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId {1} and e.sourceAsn={2} order by emailId desc {3}'.format(strSqlDate, strSqlEmailType, g.db.escape_string(str(asn)), strSqlLimit)
+    strSql='select e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET6_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f where {0} e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId {1} and e.sourceAsn={2} order by emailId desc {3}'.format(strSqlDate, strSqlEmailType, g.db.escape_string(str(asn)), strSqlLimit)
     cur = g.db.cursor()
     cur.execute(strSql)
     entries = [{"emailId": row[0], "reported": row[1], "arrivalDate": row[2], "reportedDomain": row[3], "sourceIp": row[4], "sourceDomain": row[5], "dnsbl": "", "deliveryResult": row[6], "subject": row[7]} for row in cur.fetchall()]
@@ -601,7 +608,7 @@ def displayAsnList(asn=0,emailType=None,limit=50,days=0,daysago=0):
 
 @app.route('/email/urlId/<int:urlId>')
 def displayMailListFromUrl(urlId=0):
-    strSql='select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f, emailUrl g where e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and e.emailId=g.emailId and g.urlId={0} order by emailId desc'.format(g.db.escape_string(str(urlId)))
+    strSql='select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET6_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f, emailUrl g where e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and e.emailId=g.emailId and g.urlId={0} order by emailId desc'.format(g.db.escape_string(str(urlId)))
     cur = g.db.cursor()
     cur.execute(strSql)
     entries = [{"emailId": row[0], "reported": row[1], "arrivalDate": row[2], "reportedDomain": row[3], "sourceDomain": row[4], "deliveryResult": row[5], "subject": row[6]} for row in cur.fetchall()]
@@ -633,7 +640,7 @@ def displayMailListSubject(subject="%",limit=50,days=0,daysago=0):
         strSqlLimit = 'limit {0}'.format(g.db.escape_string(str(limit)))
         titleLimit = 'limit {0}'.format(limit)
 
-    strSql='select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f where {0} e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and e.subject like "{1}" order by emailId desc {2}'.format(strSqlDate, g.db.escape_string(subject), strSqlLimit)
+    strSql='select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET6_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f where {0} e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and e.subject like "{1}" order by emailId desc {2}'.format(strSqlDate, g.db.escape_string(subject), strSqlLimit)
     cur = g.db.cursor()
     cur.execute(strSql)
     entries = [{"emailId": row[0], "reported": row[1], "arrivalDate": row[2], "reportedDomain": row[3], "sourceIp": row[4], "sourceDomain": row[5], "dnsbl": "", "deliveryResult": row[6], "subject": row[7]} for row in cur.fetchall()]
@@ -666,7 +673,7 @@ def displayMailListUrl(pattern="%",limit=50,days=0,daysago=0):
         strSqlLimit = 'limit {0}'.format(g.db.escape_string(str(limit)))
         titleLimit = 'limit {0}'.format(limit)
 
-    strSql='select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f, emailUrl g, url h where e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and e.emailId=g.emailId and g.urlId=h.urlId and h.url like "{0}" {1} order by emailId desc {2}'.format(g.db.escape_string(pattern),strSqlDate,strSqlLimit)
+    strSql='select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET6_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f, emailUrl g, url h where e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and e.emailId=g.emailId and g.urlId=h.urlId and h.url like "{0}" {1} order by emailId desc {2}'.format(g.db.escape_string(pattern),strSqlDate,strSqlLimit)
     cur = g.db.cursor()
     cur.execute(strSql)
     entries = [{"emailId": row[0], "reported": row[1], "arrivalDate": row[2], "reportedDomain": row[3], "sourceIp": row[4], "sourceDomain": row[5], "dnsbl": "", "deliveryResult": row[6], "subject": row[7]} for row in cur.fetchall()]
@@ -699,7 +706,7 @@ def displayMailListFile(pattern="%",limit=50,days=0,daysago=0):
         strSqlLimit = 'limit {0}'.format(g.db.escape_string(str(limit)))
         titleLimit = 'limit {0}'.format(limit)
 
-    strSql='select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f, emailFile g, file h where e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and e.emailId=g.emailId and g.fileId=h.fileId and h.filename like "{0}" {1} order by emailId desc {2}'.format(g.db.escape_string(pattern),strSqlDate,strSqlLimit)
+    strSql='select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET6_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f, emailFile g, file h where e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and e.emailId=g.emailId and g.fileId=h.fileId and h.filename like "{0}" {1} order by emailId desc {2}'.format(g.db.escape_string(pattern),strSqlDate,strSqlLimit)
     cur = g.db.cursor()
     cur.execute(strSql)
     entries = [{"emailId": row[0], "reported": row[1], "arrivalDate": row[2], "reportedDomain": row[3], "sourceIp": row[4], "sourceDomain": row[5], "dnsbl": "", "deliveryResult": row[6], "subject": row[7]} for row in cur.fetchall()]
@@ -818,7 +825,7 @@ def reportEmail():
             Title = "Emails reported"
             
     strEmailList = ", ".join(emailList)
-    strSql = 'select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET_NTOA(e.sourceIp) as sourceIp, sourceAsn, f.domain as sourceDomain, deliveryResult, subject, content from arfEmail e, domain d, domain f where e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and emailId in ({0})'.format(g.db.escape_string(strEmailList))
+    strSql = 'select distinct e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET6_NTOA(e.sourceIp) as sourceIp, sourceAsn, f.domain as sourceDomain, deliveryResult, subject, content from arfEmail e, domain d, domain f where e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId and emailId in ({0})'.format(g.db.escape_string(strEmailList))
     cur = g.db.cursor()
     cur.execute(strSql)
     entries = [{"emailId": row[0], "reported": row[1], "arrivalDate": row[2], "reportedDomain": row[3], "sourceIp": row[4], "sourceAsn": row[5], "sourceDomain": row[6], "deliveryResult": row[7], "subject": row[8], "content": row[9], "emailAbuse": "", "urlList": ""} for row in cur.fetchall()]

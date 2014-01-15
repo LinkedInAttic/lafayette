@@ -1,6 +1,11 @@
 CHANGELOG
 =========
 
+2014/01/14 - Franck Martin
+  -full support of IPv6 using INET6_* functions in mysql >= 5.6.3
+   if you upgrade you may need to update sourceIp in table arfEmail
+   and urlIp in table url using INET6_ATON(INET_NTOA(field))
+
 2014/01/02 - Franck Martin
   -added /tools to analyze URLs
   -now read ARF in 'text/rfc822-headers'
