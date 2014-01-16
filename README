@@ -35,3 +35,5 @@ Dependencies
 * MySQL-python
 * mysql
 * requests
+* multiprocessing
+* operator

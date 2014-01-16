@@ -31,8 +31,9 @@ import signal
 import urlparse
 import tempfile
 import subprocess
-import threading
+from multiprocessing import Pool
 import sys
+import operator
 
 from ConfigParser import SafeConfigParser
 
@@ -83,7 +84,6 @@ wldomain=config.get('dnsbl','wldomain').split(",")
 
 # end of local config
 
-threadLimiter = threading.BoundedSemaphore(25)
 privatenet = ["127.0.0.0/8","192.168.0.0/16","172.16.0.0/12","10.0.0.0/8"]
 
 def handleTimeOut(signum, frame0):
@@ -251,7 +251,6 @@ def addDnsbl(entries,filterlisted=False):
 
 def reportItem(item,reporting):
     with app.test_request_context():
-        threadLimiter.acquire()
         #add the list of urls
         db = get_db()
         strSql='select distinct c.url as url from arfEmail a, emailUrl b, url c where a.emailId=b.emailId and b.urlId = c.urlId and a.emailId={0}'.format(db.escape_string(str(item['emailId'])))
@@ -274,7 +273,12 @@ def reportItem(item,reporting):
             cur.execute(strSql)
             cur.close()
             item['reported'] = 1
-        threadLimiter.release()
+        return item
+
+result_list = []
+def getResultList(result):
+    global result_list
+    result_list.append(result)
 
 def sendArf(item, spam=False):
     global reportSender
@@ -812,8 +816,8 @@ def emailMap(days=7,daysago=0):
 
 @app.route('/reportemail',methods=['GET','POST'])
 def reportEmail():
+    global result_list
     emailList = []
-    thread_list = []
     nbEmailReported=0
     reporting=False
     title = "Reporting emails"
@@ -830,20 +834,18 @@ def reportEmail():
     cur.execute(strSql)
     entries = [{"emailId": row[0], "reported": row[1], "arrivalDate": row[2], "reportedDomain": row[3], "sourceIp": row[4], "sourceAsn": row[5], "sourceDomain": row[6], "deliveryResult": row[7], "subject": row[8], "content": row[9], "emailAbuse": "", "urlList": ""} for row in cur.fetchall()]
     cur.close()
+    result_list=[]
+    pool = Pool(processes=25)
     for item in entries:
-        t=threading.Thread(target=reportItem, args=(item,reporting,))
-        thread_list.append(t)
+        pool.apply_async(reportItem, args=(item,reporting,), callback=getResultList)
         if reporting:
             nbEmailReported = nbEmailReported+1
-    # Starts threads
-    for thread in thread_list:
-        thread.start()
-    # This blocks the calling thread until the thread whose join() method is called is terminated.
-    for thread in thread_list:
-       thread.join()
+    pool.close()
+    pool.join()
+    result_list.sort(key=operator.itemgetter('emailId'))
     if reporting:
         flash(str(nbEmailReported)+" emails have been reported to the abuse handle of each IP")
-    return render_template('report_email.html', entries=entries, title=title)
+    return render_template('report_email.html', entries=result_list, title=title)
 
 @app.route('/reportspam',methods=['GET','POST'])
 def reportSpam():

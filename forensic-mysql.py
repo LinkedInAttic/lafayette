@@ -420,9 +420,9 @@ for num in id_list:
 			signal.alarm(30)
 			try:
 				urls = urls + match_urls.findall(orgmsgpart)
-			except Exception, err:
+			except (Exception, RuntimeError) as err:
 				print ' A error: %s with %s' % (str(err),orgmsgpart)
-				signal.alarm(0)
+			signal.alarm(0)
 		else:
 			if ctype == 'message/delivery-status':
 				bounce = True
