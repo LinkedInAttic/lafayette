@@ -59,6 +59,8 @@ found=config.readfp(open(filename))
 app.secret_key = config.get('web','secret_key')
 reportSender = config.get('web','reportSender')
 mailSmtp = config.get('web','mailSmtp')
+maskHeaders = config.get('web','maskHeaders').split(",")
+
 
 dbHost=config.get('db','dbHost')
 dbUser=config.get('db','dbUser')
@@ -884,6 +886,8 @@ def reportSpam():
 
     if analyze or reporting:
         ipRawList=match_ip.findall(strEmail)
+        for header in maskHeaders:
+            strEmail=re.sub('%s:.*\n' % header,'',strEmail)
         u_strEmail=strEmail.encode('ascii','replace')
         msg = email.message_from_string(u_strEmail) 
         subject=msg.get('Subject')
