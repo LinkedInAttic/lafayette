@@ -19,7 +19,7 @@ USE arf;
 
 CREATE TABLE arfEmail (
 emailId INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-feedbackType ENUM('auth-failure'),
+feedbackType ENUM('auth-failure','abuse'),
 emailType ENUM('normal','bounce','auto-replied'),
 reported INT DEFAULT '0',
 originalMailFromLocalId INT,
