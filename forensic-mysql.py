@@ -27,8 +27,16 @@ import MySQLdb
 import signal,os
 import os
 import os.path
+import argparse
 
 from ConfigParser import SafeConfigParser
+
+cli = argparse.ArgumentParser(description="import forensic emails into mysql from feed-linkedin/feed-abusix")
+cli.add_argument("-f", "--feed", nargs=1, help="Mailbox e.g. mailbox/spamtrap",required=True)
+args = cli.parse_args()
+if args.feed[0] != "mailbox" and args.feed[0] != "spamtrap":
+    cli.print_usage()
+    exit(1)
 
 # local config
 #
@@ -41,15 +49,16 @@ dbUser=config.get('db','dbUser')
 dbName=config.get('db','dbName')
 dbPassword=config.get('db','dbPassword')
 
-imapHost=config.get('mailbox','imapHost')
-imapUser=config.get('mailbox','imapUser')
-imapPassword=config.get('mailbox','imapPassword')
-imapPort = config.get('mailbox', 'imapPort')
+imapHost=config.get(args.feed[0],'imapHost')
+imapUser=config.get(args.feed[0],'imapUser')
+imapPassword=config.get(args.feed[0],'imapPassword')
+imapPort = config.get(args.feed[0], 'imapPort')
 
 wldomain=config.get('dnsbl','wldomain').split(",")
 
 networks = {}
 pidfile = "forensic-mysql.pid"
+
 
 # end of local config
 
@@ -389,11 +398,11 @@ for num in id_list:
 			limsg ['feedbackType'] = unicode(item[1],errors='replace')
 		if item[0] == 'Original-Rcpt-To':
 			limsg ['Original-Rcpt-To'] = unicode(item[1],errors='replace')
-		if item[0] == 'Reported-Domain':
+		if item[0] == 'Reported-Domain' and args.feed[0] == "mailbox":
 			limsg ['Reported-Domain'] = unicode(item[1],errors='replace')
-		if item[0] == 'Delivery-Result':
+		if item[0] == 'Delivery-Result' and args.feed[0] == "mailbox":
 			limsg ['Delivery-Result'] = unicode(item[1],errors='replace')
-		if item[0] == 'Message-ID':
+		if item[0] == 'Original-Envelope-Id' or item[0] == 'Message-ID':
 			limsg ['messageId'] = unicode(item[1],errors='replace')
 		if item[0] == 'Authentication-Results':
 			limsg ['Authentication-Results'] = unicode(item[1],errors='replace')
@@ -403,7 +412,7 @@ for num in id_list:
 	
 	try:
 		print num
-		print 'message: %s %s %s mailfrom:%s from:%s rcptto:%s [%s]' % (limsg ['Reported-Domain'],time.strftime('%Y-%m-%d %H:%M:%S',time.gmtime(int(limsg['date']))),limsg ['sourceIP'],limsg ['mailFrom'],limsg ['from'],limsg ['Original-Rcpt-To'],limsg ['subject'])
+		print 'message: %s %s mailfrom:%s from:%s rcptto:%s [%s]' % (time.strftime('%Y-%m-%d %H:%M:%S',time.gmtime(int(limsg['date']))),limsg ['sourceIP'],limsg ['mailFrom'],limsg ['from'],limsg ['Original-Rcpt-To'],limsg ['subject'])
 	except:
 		print 'message: error, %s' % num
 	#print orgmsg
@@ -453,7 +462,8 @@ for num in id_list:
 			listurl = listurl +[(ip,o.hostname,url[0])]
 
 	#storing results in db
-	reportedDomainId = getDomainId(db,limsg ['Reported-Domain'])
+        if args.feed[0] == "mailbox":
+		reportedDomainId = getDomainId(db,limsg ['Reported-Domain'])
 	
 	try:
 		(local,domain)=limsg ['mailFrom'].split('@',2)
@@ -469,7 +479,7 @@ for num in id_list:
 	except:
 		local = ""
 		domain = ""
-	
+		
 	originalRcptToLocalId = getEmailLocalId(db,local)
 	originalRcptToDomainId = getDomainId(db,domain)
 
@@ -498,10 +508,11 @@ for num in id_list:
 	(sourceAsn,countryCode) = getIp4ToAsnCc(limsg ['sourceIP'])
 
 	deliveryResult="none"
-	if "dis=reject" in limsg ['Authentication-Results']:
-		deliveryResult="reject"
-	if "dis=quarantine" in limsg ['Authentication-Results']:
-		deliveryResult="quarantine"
+        if args.feed[0] == "mailbox":
+		if "dis=reject" in limsg ['Authentication-Results']:
+			deliveryResult="reject"
+		if "dis=quarantine" in limsg ['Authentication-Results']:
+			deliveryResult="quarantine"
 
 	try:
 		arrivalDate = time.strftime('%Y-%m-%d %H:%M:%S',time.gmtime(int(limsg['date'])))
@@ -509,9 +520,13 @@ for num in id_list:
 		strSql = strSql + "feedbackType,"
 		strSql = strSql + "emailType,"
 		strSql = strSql + "originalMailFromLocalId, originalMailFromDomainId,originalRcptToLocalId,originalRcptToDomainId,"
-		strSql = strSql + "arrivalDate,messageId,authenticationResults,sourceIp, sourceDomainId, sourceAsn, countryCode,"
-		strSql = strSql + "deliveryResult,"
-		strSql = strSql + "reportedDomainId,"
+		strSql = strSql + "arrivalDate,messageId,"
+                if args.feed[0] == "mailbox":
+                         strSql = strSql + "authenticationResults,"
+		strSql = strSql + "sourceIp, sourceDomainId, sourceAsn, countryCode,"
+          	strSql = strSql + "deliveryResult,"
+                if args.feed[0] == "mailbox":
+	        	strSql = strSql + "reportedDomainId,"
 		strSql = strSql + "originalFromLocalId, originalFromDomainId,"
 		strSql = strSql + "subject,content)"
 		strSql = strSql + " VALUES("
@@ -525,21 +540,22 @@ for num in id_list:
 		strSql = strSql + "%s,%s," % (db.escape_string(str(originalMailFromLocalId)),
 			db.escape_string(str(originalMailFromDomainId)))
 		strSql = strSql + "%s,%s," % (str(db.escape_string(str(originalRcptToLocalId))),
-			db.escape_string(str(originalRcptToLocalId)))
-		strSql = strSql + "'%s','%s','%s',INET6_ATON('%s'),%s," % (db.escape_string(arrivalDate),
-			db.escape_string(limsg['messageId']),
-			db.escape_string(limsg['Authentication-Results']),
-			db.escape_string(limsg['sourceIP']),
-			db.escape_string(str(sourceDomainId)))
+			db.escape_string(str(originalRcptToDomainId)))
+		strSql = strSql + "'%s','%s'," % (db.escape_string(arrivalDate),db.escape_string(limsg['messageId']))
+                if args.feed[0] == "mailbox":
+                        strSql = strSql + "'%s'," % (db.escape_string(limsg['Authentication-Results']))
+		strSql = strSql + "INET6_ATON('%s'),%s," % (db.escape_string(limsg['sourceIP']),
+                        db.escape_string(str(sourceDomainId)))
 		strSql = strSql + "%s,'%s'," % (db.escape_string(str(sourceAsn)),
 			db.escape_string(countryCode))
-		strSql = strSql + "'%s'," % (db.escape_string(deliveryResult))
-		strSql = strSql + "%s," % (db.escape_string(str(reportedDomainId)))
+          	strSql = strSql + "'%s'," % (db.escape_string(deliveryResult))
+                if args.feed[0] == "mailbox":
+	        	strSql = strSql + "%s," % (db.escape_string(str(reportedDomainId)))
 		strSql = strSql + "%s,%s," % (db.escape_string(str(originalFromLocalId)),
 			db.escape_string(str(originalFromDomainId)))
 		strSql = strSql + "'%s','%s'" % (db.escape_string(limsg ['subject']),db.escape_string(limsg['msg']))
 		strSql = strSql + ")"
-		#print strSql
+        	#print strSql
 		cur = db.cursor()
 		cur.execute(strSql)
 		emailId = cur.lastrowid

@@ -535,9 +535,13 @@ def urllistSubject(pattern="%",limit=50,days=0,daysago=0):
 @app.route('/email/type/<emailType>/days/<int:days>')
 @app.route('/email/type/<emailType>/days/<int:days>/daysago/<int:daysago>')
 @app.route('/email/type/<emailType>/days/<int:days>/filterlisted/<int:filterlisted>')
+@app.route('/email/fbtype/<feedbackType>')
+@app.route('/email/fbtype/<feedbackType>/limit/')
+@app.route('/email/fbtype/<feedbackType>/limit/<int:limit>')
+@app.route('/email/fbtype/<feedbackType>/days/<int:days>')
 @app.route('/email/days/<int:days>')
 @app.route('/email/days/<int:days>/daysago/<int:daysago>')
-def displayMailList(emailType=None,limit=50,days=0,daysago=0,filterlisted=0):
+def displayMailList(emailType=None,feedbackType=None,limit=50,days=0,daysago=0,filterlisted=0):
     strSqlDate = ''
     strSqlLimit = ''
     titleDate = ''
@@ -560,8 +564,13 @@ def displayMailList(emailType=None,limit=50,days=0,daysago=0,filterlisted=0):
         if emailType=="normal" or emailType=="bounce" or emailType=="auto-replied":
             strSqlEmailType='and emailType="{0}"'.format(g.db.escape_string(emailType))
         if emailType=="reported":
-            strSqlEmailType='and reported!=0'   
-    strSql='select e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET6_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f where {0} e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId {1} order by emailId desc {2}'.format(strSqlDate, strSqlEmailType, strSqlLimit)
+            strSqlEmailType='and reported!=0'
+    strSqlFeedbackType='and feedbackType="auth-failure"'
+    strSql='select e.emailId as emailId, reported, arrivalDate, d.domain as reportedDomain, INET6_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain d, domain f where {0} e.reportedDomainID=d.domainId and e.sourceDomainId=f.domainId {1} {2} order by emailId desc {3}'.format(strSqlDate, strSqlEmailType, strSqlFeedbackType, strSqlLimit)
+    if feedbackType is not None:
+        if feedbackType=="abuse":
+            strSqlFeedbackType='and feedbackType="abuse"'
+            strSql='select e.emailId as emailId, reported, arrivalDate, NULL , INET6_NTOA(sourceIp) as sourceIp, f.domain as sourceDomain, deliveryResult, subject from arfEmail e, domain f where {0} e.sourceDomainId=f.domainId {1} {2} order by emailId desc {3}'.format(strSqlDate, strSqlEmailType, strSqlFeedbackType, strSqlLimit)
     cur = g.db.cursor()
     cur.execute(strSql)
     entries = [{"emailId": row[0], "reported": row[1], "arrivalDate": row[2], "reportedDomain": row[3], "sourceIp": row[4], "sourceDomain": row[5], "dnsbl": "", "deliveryResult": row[6], "subject": row[7]} for row in cur.fetchall()]
