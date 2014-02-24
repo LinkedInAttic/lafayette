@@ -376,6 +376,8 @@ for num in id_list:
 	limsg ['date'] = datetime.now()
 	limsg ['messageId'] = ""
 	u_orgmsg = unicode(orgmsg,errors='replace')
+	if args.feed[0] == "spamtrap":
+		u_orgmsg = re.sub("(?<!Message-ID: )<.+@.+>","<xxx@xxx>",u_orgmsg)
 	limsg ['msg'] = u_orgmsg.encode("ascii",'xmlcharrefreplace')
 	
 	for item in feedbackreportitems:
