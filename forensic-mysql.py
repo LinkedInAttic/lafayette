@@ -390,7 +390,7 @@ for num in id_list:
 				lidate = parse(unicode(item[1],errors='replace').encode("ascii",'replace'))
 				listrdate = str(calendar.timegm(lidate.utctimetuple()))
 			except:
-				listrdate = str(calendar.timegm(lidate.utctimetuple()))
+				listrdate = str(calendar.timegm(time.gmtime()))
 			limsg['date'] = listrdate
 		if item[0] == 'Original-Mail-From':
 			limsg ['mailFrom'] = unicode(item[1],errors='replace')

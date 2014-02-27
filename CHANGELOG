@@ -1,6 +1,12 @@
 CHANGELOG
 =========
 
+014/02/27 - Franck Martin
+  -highlighting in green emails from policy=none
+
+2014/02/27 - Abhishek Amarnath Ubale
+  -adding the capability of importing a spamtrap feed
+
 2014/01/15 - Franck Martin
   -re-implemented multiprocessing for sending emails
 

@@ -8,7 +8,11 @@
     {% if entry.reported == 1 %}
     <tr style="background:#AAAAAA">
     {% else %}
+    {% if entry.deliveryResult == "none" %}
+    <tr style="background:#CCFFCC">
+    {% else%}
     <tr>
+    {% endif %}
     {% endif %}
     <td><input type="checkbox" name="emailid{{ loop.index }}" value="{{ entry.emailId }}" {% if entry.reported == 0 %}checked="checked"{% endif %}></td><td>{% if entry.reported == 1 %}R{% endif %}</td><td><a href="javascript:void(0)" onClick="loadEmail({{ entry.emailId }});">{{ entry.emailId }}</a></td><td>{{ entry.arrivalDate }}</td><td>{{ entry.reportedDomain }}</td><td>{{ entry.sourceIp }}</td><td>{{ entry.sourceDomain }}</td><td>{{ entry.emailAbuse }}</td><td>{{ entry.deliveryResult|safe }}</td><td>{{ entry.subject|string|escape }}</td></tr>
   {% else %}

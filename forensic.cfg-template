@@ -24,6 +24,12 @@ imapUser = failures
 imapPassword = password
 imapPort = 993
 
+[spamtrap]
+imapHost = localhost
+imapUser = spamtraps
+imapPassword = password
+imapPort = 993
+
 [reports]
 email = feed@example.net
 emailSpam = spamreport@example.net

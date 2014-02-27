@@ -21,7 +21,11 @@ $(document).ready(function()
     {% if entry.reported == 1 %}
     <tr style="background:#AAAAAA">
     {% else %}
+    {% if entry.deliveryResult == "none" %}
+    <tr style="background:#CCFFCC">
+    {% else%}
     <tr>
+    {% endif %}
     {% endif %}
     <td><input type="checkbox" name="emailid{{ loop.index }}" value="{{ entry.emailId }}"></td><td><a href="javascript:void(0)" onClick="loadEmail({{ entry.emailId }});">{{ entry.emailId }}</a></td><td>{% if entry.reported == 1 %}R{% endif %}</td><td>{{ entry.arrivalDate }}</td><td>{{ entry.reportedDomain }}</td>
     <td>{{ entry.sourceDomain }}</td>
