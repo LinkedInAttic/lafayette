@@ -277,11 +277,6 @@ def reportItem(item,reporting):
             item['reported'] = 1
         return item
 
-result_list = []
-def getResultList(result):
-    global result_list
-    result_list.append(result)
-
 def sendArf(item, spam=False):
     global reportSender
     global mailSmtp
@@ -827,7 +822,6 @@ def emailMap(days=7,daysago=0):
 
 @app.route('/reportemail',methods=['GET','POST'])
 def reportEmail():
-    global result_list
     emailList = []
     nbEmailReported=0
     reporting=False
@@ -847,10 +841,9 @@ def reportEmail():
     cur.close()
     result_list=[]
     pool = Pool(processes=25)
-    for item in entries:
-        pool.apply_async(reportItem, args=(item,reporting,), callback=getResultList)
-        if reporting:
-            nbEmailReported = nbEmailReported+1
+    result_list = pool.map(lambda item: reportItem(item, reporting), entries)
+    if reporting:
+        nbEmailReported = len(entries)
     pool.close()
     pool.join()
     result_list.sort(key=operator.itemgetter('emailId'))

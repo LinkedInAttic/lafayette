@@ -318,6 +318,7 @@ for num in id_list:
 	liautosubmitted = ""
 	rfc822Found = False
 	bounce=False
+	feedbackreportitems = []
 	for part in msg.walk():
 		if part.get_content_type() == 'message/feedback-report':
 			feedbackreport = part.get_payload()
