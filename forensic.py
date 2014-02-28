@@ -251,6 +251,12 @@ def addDnsbl(entries,filterlisted=False):
            newlist.append(entry)
     return newlist
 
+class PoolReportItem(object):
+    def __init__(self, reporting):
+        self.reporting = reporting
+    def __call__(self,item):
+        return reportItem(item,self.reporting)
+
 def reportItem(item,reporting):
     with app.test_request_context():
         #add the list of urls
@@ -841,7 +847,7 @@ def reportEmail():
     cur.close()
     result_list=[]
     pool = Pool(processes=25)
-    result_list = pool.map(lambda item: reportItem(item, reporting), entries)
+    result_list = pool.map(PoolReportItem(reporting), entries)
     if reporting:
         nbEmailReported = len(entries)
     pool.close()
